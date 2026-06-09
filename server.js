@@ -59,6 +59,25 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// ---- Stripe webhook (MUST be before express.json so we get the raw body for
+// signature verification). Handler logic is defined further below.
+app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) return res.status(503).send('webhooks not configured');
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (e) {
+    console.error('webhook signature failed:', e.message);
+    return res.status(400).send('signature verification failed');
+  }
+  // Idempotency — skip events we've already processed (Stripe retries).
+  if (Q.webhookSeen.get(event.id)) return res.json({ received: true, duplicate: true });
+  Q.insWebhookEvent.run(event.id, event.type);
+  try { await handleStripeEvent(event); }
+  catch (e) { console.error('webhook handler error:', e.message); }
+  res.json({ received: true });
+});
+
 app.use(express.json({ limit: '2mb' })); // headroom for small base64 logo uploads
 app.use(cookieParser());
 
@@ -175,6 +194,12 @@ const Q = {
                                     stripe_subscription_id=@stripe_subscription_id, subscription_status=@subscription_status,
                                     trial_ends_at=@trial_ends_at WHERE id=@id`),
   accountBySubId: db.prepare('SELECT * FROM accounts WHERE stripe_subscription_id = ?'),
+  accountByCustomerId: db.prepare('SELECT * FROM accounts WHERE stripe_customer_id = ?'),
+  updAccountSubState: db.prepare('UPDATE accounts SET subscription_status=?, trial_ends_at=? WHERE id=?'),
+  updAccountStripeIds: db.prepare(`UPDATE accounts SET stripe_customer_id=@stripe_customer_id, stripe_subscription_id=@stripe_subscription_id,
+                                   subscription_status=@subscription_status, trial_ends_at=@trial_ends_at WHERE id=@id`),
+  webhookSeen: db.prepare('SELECT id FROM webhook_events WHERE id = ?'),
+  insWebhookEvent: db.prepare('INSERT OR IGNORE INTO webhook_events (id, type) VALUES (?, ?)'),
 };
 
 function publicBiz(b) {
@@ -292,6 +317,59 @@ app.post('/api/onboard/complete', writeLimiter, async (req, res) => {
   res.cookie('m5s_session', makeSession(account.id, 'customer', email), cookieOpts);
   res.json({ ok: true });
 });
+
+// ---- Webhook event processing (called by /webhook/stripe, registered above) ----
+const isoFromUnix = (s) => (s ? new Date(s * 1000).toISOString() : null);
+
+// Create or update an account from Stripe data without ever clobbering a comp account or a set password.
+function ensureAccount(email, custId, subId, status, trialEnds) {
+  let acct = (subId && Q.accountBySubId.get(subId)) || (custId && Q.accountByCustomerId.get(custId));
+  if (!acct && email) acct = Q.accountByEmail.get(email.toLowerCase());
+  if (acct) {
+    if (acct.subscription_status === 'comp') return acct; // never override a free account
+    Q.updAccountStripeIds.run({
+      id: acct.id,
+      stripe_customer_id: custId || acct.stripe_customer_id,
+      stripe_subscription_id: subId || acct.stripe_subscription_id,
+      subscription_status: status || acct.subscription_status,
+      trial_ends_at: trialEnds,
+    });
+    return acct;
+  }
+  if (!email) return null;
+  const info = Q.insAccountFull.run({
+    email: email.toLowerCase(), password_hash: null,
+    stripe_customer_id: custId || null, stripe_subscription_id: subId || null,
+    subscription_status: status || 'trialing', trial_ends_at: trialEnds,
+  });
+  return Q.accountById.get(info.lastInsertRowid);
+}
+
+async function handleStripeEvent(event) {
+  const obj = event.data.object;
+  if (event.type === 'checkout.session.completed') {
+    const email = (obj.customer_details && obj.customer_details.email) || obj.customer_email || '';
+    const custId = typeof obj.customer === 'string' ? obj.customer : (obj.customer && obj.customer.id) || null;
+    const subId = typeof obj.subscription === 'string' ? obj.subscription : (obj.subscription && obj.subscription.id) || null;
+    let status = 'trialing', trialEnds = null;
+    if (subId && stripe) {
+      try { const sub = await stripe.subscriptions.retrieve(subId); status = sub.status; trialEnds = isoFromUnix(sub.trial_end); } catch (e) {}
+    }
+    ensureAccount(email, custId, subId, status, trialEnds);
+  } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+    const sub = obj;
+    const custId = typeof sub.customer === 'string' ? sub.customer : (sub.customer && sub.customer.id) || null;
+    const acct = Q.accountBySubId.get(sub.id) || (custId && Q.accountByCustomerId.get(custId));
+    if (acct && acct.subscription_status !== 'comp') {
+      const status = event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status;
+      Q.updAccountSubState.run(status, isoFromUnix(sub.trial_end), acct.id);
+    }
+  } else if (event.type === 'invoice.payment_failed') {
+    const subId = typeof obj.subscription === 'string' ? obj.subscription : (obj.subscription && obj.subscription.id);
+    const acct = subId && Q.accountBySubId.get(subId);
+    if (acct && acct.subscription_status !== 'comp') Q.updAccountSubState.run('past_due', acct.trial_ends_at, acct.id);
+  }
+}
 
 // Business config for the rating page
 app.get('/api/business/:slug', (req, res) => {

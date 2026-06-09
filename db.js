@@ -84,6 +84,13 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at             TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Processed Stripe webhook event IDs (idempotency — Stripe retries events).
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id          TEXT PRIMARY KEY,
+  type        TEXT,
+  received_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_feedback_biz ON feedback(business_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_events_biz ON rating_events(business_id, created_at);
 `);
