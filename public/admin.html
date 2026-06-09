@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="robots" content="noindex" />
 <title>More5Stars — Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
   :root{--brand:#6C2BD9;--brand-2:#9B5DE5;--accent:#FFC83D;--ink:#160f24;--muted:#5e5670;--line:#ece7f5;--soft:#f7f4fd;--ok:#1f9d55;--warn:#e67e22;--bad:#c0392b}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -61,7 +60,7 @@
   .muted{color:var(--muted)}
   .empty{text-align:center;color:var(--muted);padding:34px}
   .qr-box{text-align:center}
-  #qrcanvas{margin:14px auto;border-radius:12px}
+  #qrimg{margin:14px auto;border-radius:12px;width:220px;height:220px;display:block;background:var(--soft)}
   .url-row{display:flex;gap:8px}
   .url-row input{background:var(--soft)}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -151,7 +150,7 @@
           <div class="card qr-box">
             <strong>Customer review link</strong>
             <p class="muted" style="font-size:13px;margin:6px 0 12px">Share this link or print the QR. This is what your customers scan.</p>
-            <canvas id="qrcanvas" width="220" height="220"></canvas>
+            <img id="qrimg" alt="QR code" />
             <div class="url-row">
               <input id="qr-url" readonly />
               <button class="btn-light" id="qr-copy">Copy</button>
@@ -315,10 +314,17 @@ async function loadFeedback(){
 /* ---- QR ---- */
 function setupQR(){
   const url=location.origin+'/r/'+current.slug;
+  const qrSrc='/api/qr.png?slug='+encodeURIComponent(current.slug);
   $('qr-url').value=url; $('qr-open').href=url;
-  QRCode.toCanvas($('qrcanvas'), url, {width:220,margin:1,color:{dark:current.brand_color||'#160f24',light:'#ffffff'}}, ()=>{});
+  $('qrimg').src=qrSrc;
   $('qr-copy').onclick=()=>{navigator.clipboard.writeText(url);$('qr-copy').textContent='Copied!';setTimeout(()=>$('qr-copy').textContent='Copy',1200);};
-  $('qr-dl').onclick=()=>{const a=document.createElement('a');a.download=current.slug+'-qr.png';a.href=$('qrcanvas').toDataURL();a.click();};
+  $('qr-dl').onclick=async()=>{
+    try{
+      const blob=await fetch(qrSrc).then(r=>r.blob());
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=current.slug+'-qr.png'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    }catch(e){ window.open(qrSrc,'_blank'); }
+  };
 }
 
 /* ---- MODAL ---- */

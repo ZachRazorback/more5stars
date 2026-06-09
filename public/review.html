@@ -133,8 +133,10 @@
       });
       const data = await r.json();
       if (data.routed_to === 'google' && data.google_review_url) {
-        $('go-google').onclick = () => { window.location.href = data.google_review_url; };
-        show('step-google');
+        // Happy customer — send straight to Google, no intermediate screen.
+        $('hint').textContent = 'Taking you to Google…';
+        window.location.replace(data.google_review_url);
+        return;
       } else {
         show('step-feedback');
         $('fb-message').focus();

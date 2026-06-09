@@ -26,6 +26,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
+const QRCode = require('qrcode');
 const { db, seed } = require('./db');
 
 seed(); // ensure admin + demo exist on boot
@@ -135,6 +136,26 @@ function publicBiz(b) {
 }
 
 // ============ PUBLIC API ============
+
+// Server-rendered QR PNG for a business's review link (reliable, no CDN/client lib).
+// Always dark-on-white for guaranteed scannability regardless of brand color.
+app.get('/api/qr.png', async (req, res) => {
+  const slug = str(req.query.slug, 60).toLowerCase();
+  const b = Q.bizBySlug.get(slug);
+  if (!b) return res.status(404).send('not found');
+  const reviewUrl = `${req.protocol}://${req.get('host')}/r/${slug}`;
+  try {
+    const buf = await QRCode.toBuffer(reviewUrl, {
+      type: 'png', width: 360, margin: 1,
+      color: { dark: '#160f24', light: '#ffffff' },
+    });
+    res.type('png');
+    res.set('Cache-Control', 'public, max-age=300');
+    res.send(buf);
+  } catch (e) {
+    res.status(500).send('qr error');
+  }
+});
 
 // Business config for the rating page
 app.get('/api/business/:slug', (req, res) => {
