@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>More5Stars — Turn Happy Customers Into 5-Star Google Reviews</title>
+<meta name="description" content="Smart review routing for local businesses. 5-star ratings go to Google. Everyone else goes to private feedback — so you fix problems before they go public." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --brand:#6C2BD9; --brand-2:#9B5DE5; --accent:#FFC83D;
+    --ink:#160f24; --muted:#5e5670; --line:#ece7f5; --bg:#fff; --soft:#f7f4fd;
+    --radius:18px; --max:1120px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:"Plus Jakarta Sans",system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+  .btn{display:inline-block;border-radius:12px;padding:14px 24px;font-weight:700;font-size:15px;cursor:pointer;border:0;transition:transform .15s, box-shadow .15s}
+  .btn-primary{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;box-shadow:0 10px 24px rgba(108,43,217,.28)}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(108,43,217,.36)}
+  .btn-ghost{background:var(--soft);color:var(--brand)}
+  .btn-ghost:hover{transform:translateY(-2px)}
+  .eyebrow{display:inline-block;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--brand);background:var(--soft);padding:7px 14px;border-radius:999px}
+
+  /* NAV */
+  header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  nav{display:flex;align-items:center;justify-content:space-between;height:68px}
+  .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px}
+  .logo .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px}
+  .navlinks{display:flex;gap:28px;align-items:center;font-weight:600;font-size:15px;color:var(--muted)}
+  .navlinks a:hover{color:var(--ink)}
+  @media(max-width:820px){.navlinks{display:none}}
+
+  /* HERO */
+  .hero{padding:72px 0 40px;text-align:center;background:radial-gradient(1200px 500px at 50% -10%,var(--soft),#fff)}
+  .hero h1{font-size:clamp(34px,6vw,58px);line-height:1.08;font-weight:800;letter-spacing:-.02em;max-width:900px;margin:18px auto 0}
+  .hero h1 .grad{background:linear-gradient(135deg,var(--brand),var(--brand-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.lede{font-size:clamp(17px,2.4vw,20px);color:var(--muted);max-width:620px;margin:20px auto 0}
+  .hero-cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+  .heart-stars{font-size:26px;letter-spacing:4px;color:var(--accent);margin-top:26px}
+  .fineprint{color:var(--muted);font-size:13px;margin-top:14px}
+
+  /* STATS */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin:56px auto 0;max-width:880px}
+  .stat{background:var(--soft);border-radius:var(--radius);padding:22px 14px;text-align:center}
+  .stat b{display:block;font-size:30px;font-weight:800;color:var(--brand)}
+  .stat span{font-size:13px;color:var(--muted);font-weight:600}
+  @media(max-width:680px){.stats{grid-template-columns:repeat(2,1fr)}}
+
+  section{padding:74px 0}
+  .section-head{text-align:center;max-width:680px;margin:0 auto 50px}
+  .section-head h2{font-size:clamp(28px,4vw,40px);font-weight:800;letter-spacing:-.02em;margin-top:12px}
+  .section-head p{color:var(--muted);font-size:17px;margin-top:12px}
+
+  /* HOW */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .step{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:30px 26px;position:relative}
+  .step .n{position:absolute;top:-14px;left:26px;width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px}
+  .step .ico{font-size:34px}
+  .step h3{margin:14px 0 8px;font-size:19px}
+  .step p{color:var(--muted);font-size:15px}
+  @media(max-width:820px){.steps{grid-template-columns:1fr}}
+
+  /* ROUTING DIAGRAM */
+  .routing{background:var(--soft);border-radius:24px;padding:40px 28px;margin-top:42px;text-align:center}
+  .routing .flow{display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:18px}
+  .node{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 20px;font-weight:700;min-width:150px}
+  .node small{display:block;font-weight:500;color:var(--muted);font-size:13px;margin-top:4px}
+  .node.five{border-color:var(--accent);box-shadow:0 8px 20px rgba(255,200,61,.25)}
+  .node.priv{border-color:var(--brand);box-shadow:0 8px 20px rgba(108,43,217,.18)}
+  .arrow{font-size:26px;color:var(--brand)}
+  @media(max-width:680px){.arrow{transform:rotate(90deg)}}
+
+  /* FEATURES */
+  .features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .feature{border:1px solid var(--line);border-radius:var(--radius);padding:26px}
+  .feature .ico{font-size:28px}
+  .feature h3{margin:12px 0 8px;font-size:18px}
+  .feature p{color:var(--muted);font-size:15px}
+  @media(max-width:820px){.features{grid-template-columns:1fr}}
+
+  /* DEMO */
+  .demo-grid{display:grid;grid-template-columns:1fr 420px;gap:40px;align-items:center}
+  @media(max-width:900px){.demo-grid{grid-template-columns:1fr}}
+  .phone{background:#fff;border-radius:24px;box-shadow:0 24px 60px rgba(60,30,120,.16);padding:34px 26px;text-align:center;border:1px solid var(--line)}
+  .phone .ava{width:64px;height:64px;border-radius:18px;margin:0 auto 14px;background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800}
+  .phone h4{font-size:18px}
+  .phone .q{color:var(--muted);font-size:14px;margin-bottom:14px}
+  .dstars{font-size:42px;letter-spacing:4px;cursor:pointer;color:#e4def0;user-select:none}
+  .dstars span:hover,.dstars span.lit{color:var(--accent)}
+  .dmsg{margin-top:18px;min-height:88px;font-size:15px}
+  .dmsg .ok{color:#1f9d55;font-weight:700}
+  .dmsg .pr{color:var(--brand);font-weight:700}
+  .dreset{margin-top:8px;background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:13px}
+
+  /* PRICING */
+  .price-card{max-width:460px;margin:0 auto;border:2px solid var(--brand);border-radius:24px;padding:38px 32px;text-align:center;position:relative;box-shadow:0 20px 50px rgba(108,43,217,.14)}
+  .badge{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;font-size:12px;font-weight:700;padding:6px 16px;border-radius:999px}
+  .price{font-size:54px;font-weight:800;color:var(--ink);margin:8px 0 0}
+  .price small{font-size:15px;color:var(--muted);font-weight:600}
+  .plist{text-align:left;margin:24px 0;display:grid;gap:11px}
+  .plist li{list-style:none;display:flex;gap:10px;font-size:15px;color:var(--ink)}
+  .plist li b{color:var(--brand)}
+
+  /* INDUSTRIES */
+  .ind{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:760px;margin:0 auto}
+  .chip{background:var(--soft);border-radius:12px;padding:12px 18px;font-weight:600;font-size:14px;display:flex;gap:8px;align-items:center}
+
+  /* FAQ */
+  .faq{max-width:760px;margin:0 auto;display:grid;gap:12px}
+  details{border:1px solid var(--line);border-radius:14px;padding:18px 22px;background:#fff}
+  details summary{font-weight:700;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-size:16px}
+  details summary::-webkit-details-marker{display:none}
+  details summary::after{content:'+';font-size:22px;color:var(--brand)}
+  details[open] summary::after{content:'–'}
+  details p{color:var(--muted);margin-top:12px;font-size:15px}
+
+  /* CTA + FOOTER */
+  .final{background:linear-gradient(135deg,var(--brand),var(--brand-2));border-radius:28px;color:#fff;text-align:center;padding:56px 28px;margin:30px auto}
+  .final h2{font-size:clamp(26px,4vw,38px);font-weight:800}
+  .final p{opacity:.92;margin:12px auto 24px;max-width:520px}
+  .final .btn-primary{background:#fff;color:var(--brand);box-shadow:none}
+  footer{border-top:1px solid var(--line);padding:36px 0;color:var(--muted);font-size:14px}
+  .foot-grid{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:center}
+  .foot-links a{margin-left:18px}
+  .compliance{font-size:12.5px;color:#9990ad;max-width:var(--max);margin:14px auto 0;padding:0 22px;line-height:1.5}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap"><nav>
+    <a class="logo" href="/"><span class="mark">★</span> More5Stars</a>
+    <div class="navlinks">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#demo">Demo</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+      <a href="/admin">Login</a>
+    </div>
+    <a class="btn btn-primary" href="https://buy.stripe.com/5kQ00k4A0h1DdNbdULdfG0a">Start Free Trial</a>
+  </nav></div>
+</header>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="wrap">
+    <span class="eyebrow">⭐ Trusted by 500+ local businesses</span>
+    <h1>Turn happy customers into <span class="grad">5-star Google reviews</span> — automatically.</h1>
+    <p class="lede">Customers tap a star. <b>5 stars go straight to Google.</b> Everyone else lands in a private feedback form, so you fix problems before they become public 1-star reviews.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="https://buy.stripe.com/5kQ00k4A0h1DdNbdULdfG0a">🚀 Start 14-Day Free Trial</a>
+      <a class="btn btn-ghost" href="#demo">👇 Try the live demo</a>
+    </div>
+    <div class="heart-stars">★★★★★</div>
+    <p class="fineprint">Credit card required. Cancel anytime within 14 days for no charge.</p>
+
+    <div class="stats">
+      <div class="stat"><b>500+</b><span>Local Businesses</span></div>
+      <div class="stat"><b>47K+</b><span>Reviews Generated</span></div>
+      <div class="stat"><b>4.9★</b><span>Avg Client Rating</span></div>
+      <div class="stat"><b>83%</b><span>More 5-Star Reviews</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- HOW -->
+<section id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Simple. Fast. Powerful.</span>
+      <h2>Up and running in 5 minutes</h2>
+      <p>No tech skills needed. You collect the reviews — we handle the routing.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><div class="ico">📱</div><h3>Customer scans</h3><p>They scan a QR code on a receipt, table tent, or follow-up text. No app, no login — it opens instantly.</p></div>
+      <div class="step"><span class="n">2</span><div class="ico">⭐</div><h3>They rate you</h3><p>A clean page asks for 1–5 stars. The whole thing takes about 10 seconds on their phone.</p></div>
+      <div class="step"><span class="n">3</span><div class="ico">🚦</div><h3>Smart routing</h3><p><b>5 stars → Google.</b> 1–4 stars → private feedback straight to you. More public praise, fewer public surprises.</p></div>
+    </div>
+
+    <div class="routing">
+      <span class="eyebrow">The routing logic</span>
+      <div class="flow">
+        <div class="node">Customer rates<small>1–5 stars</small></div>
+        <div class="arrow">→</div>
+        <div class="node five">⭐ 5 stars<small>→ Google Review</small></div>
+        <div class="node priv">😕 1–4 stars<small>→ Private feedback to you</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features" style="background:var(--soft)">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Everything you need</span>
+      <h2>Built for local business growth</h2>
+      <p>One platform handles reviews, feedback, follow-ups, and analytics.</p>
+    </div>
+    <div class="features">
+      <div class="feature"><div class="ico">🚦</div><h3>Smart Review Routing</h3><p>Only 5-star raters are invited to Google. Set the threshold per location whenever you want.</p></div>
+      <div class="feature"><div class="ico">🔒</div><h3>Private Feedback Capture</h3><p>1–4 star customers get a private form. You're notified instantly so you can resolve it before it goes public.</p></div>
+      <div class="feature"><div class="ico">📲</div><h3>Custom QR Codes</h3><p>Generate a branded QR for every location in seconds. Print it, add to receipts, or text it.</p></div>
+      <div class="feature"><div class="ico">📊</div><h3>Review Analytics</h3><p>Rating distribution, Google conversion rate, feedback themes, and trends — all in one dashboard.</p></div>
+      <div class="feature"><div class="ico">📧</div><h3>Follow-Up Ready</h3><p>Drop the review link into any email or SMS campaign or CRM automation you already run.</p></div>
+      <div class="feature"><div class="ico">🏢</div><h3>Unlimited Locations</h3><p>Each location gets its own page, QR code, Google URL, and private feedback inbox.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- DEMO -->
+<section id="demo">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Try it now</span>
+      <h2>See smart routing in action</h2>
+      <p>This is exactly what your customers see when they scan. Tap the stars.</p>
+    </div>
+    <div class="demo-grid">
+      <div>
+        <h3 style="font-size:22px;margin-bottom:10px">Tap 5 stars vs. tap 1–4 stars</h3>
+        <p style="color:var(--muted);font-size:16px">Notice the difference: a 5-star tap routes to Google. Anything lower opens a private feedback form that never goes public — giving you the chance to make it right.</p>
+        <p style="color:var(--muted);font-size:16px;margin-top:14px">Want the real thing for your business? <a href="/r/demo" style="color:var(--brand);font-weight:700">Open the live demo page →</a></p>
+      </div>
+      <div class="phone">
+        <div class="ava">A</div>
+        <h4>Acme Plumbing</h4>
+        <div class="q">How was your experience?</div>
+        <div class="dstars" id="dstars">
+          <span data-v="1">★</span><span data-v="2">★</span><span data-v="3">★</span><span data-v="4">★</span><span data-v="5">★</span>
+        </div>
+        <div class="dmsg" id="dmsg">Tap a star to rate us</div>
+        <button class="dreset" id="dreset" style="display:none">↩ Try again</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section id="pricing" style="background:var(--soft)">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Simple pricing</span>
+      <h2>One price. Everything included.</h2>
+      <p>No per-scan fees. No setup fees. No contracts.</p>
+    </div>
+    <div class="price-card">
+      <span class="badge">🔥 Most Popular</span>
+      <div class="price">$247<small> / mo per location</small></div>
+      <ul class="plist">
+        <li><b>✓</b> Smart review routing (5 stars → Google)</li>
+        <li><b>✓</b> Private feedback capture (1–4 stars)</li>
+        <li><b>✓</b> Custom QR code generator</li>
+        <li><b>✓</b> Real-time feedback notifications</li>
+        <li><b>✓</b> Review analytics dashboard</li>
+        <li><b>✓</b> Unlimited scans &amp; responses</li>
+        <li><b>✓</b> Unlimited locations supported</li>
+        <li><b>✓</b> Dedicated onboarding support</li>
+      </ul>
+      <a class="btn btn-primary" style="width:100%" href="https://buy.stripe.com/5kQ00k4A0h1DdNbdULdfG0a">🚀 Start 14-Day Free Trial</a>
+      <p class="fineprint">Credit card required. Cancel anytime within 14 days for no charge.</p>
+    </div>
+  </div>
+</section>
+
+<!-- INDUSTRIES -->
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Who it's for</span>
+      <h2>Built for every local service business</h2>
+    </div>
+    <div class="ind">
+      <div class="chip">🔧 Plumbers</div><div class="chip">❄️ HVAC</div><div class="chip">🦷 Dentists</div>
+      <div class="chip">💆 Med Spas</div><div class="chip">🍽️ Restaurants</div><div class="chip">🚗 Auto Shops</div>
+      <div class="chip">⚡ Electricians</div><div class="chip">🏡 Landscaping</div><div class="chip">🐾 Pet Services</div>
+      <div class="chip">💪 Gyms</div><div class="chip">🏥 Chiropractors</div><div class="chip">🔑 Locksmiths</div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" style="background:var(--soft)">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Got questions?</span>
+      <h2>Frequently asked questions</h2>
+    </div>
+    <div class="faq">
+      <details open><summary>How does the routing work exactly?</summary><p>When a customer scans your QR code, they see a simple star page. Tap 5 stars and they're sent to your Google Business Profile to post publicly. Tap 1–4 stars and they instead get a private feedback form that comes straight to you — so you hear about a problem before it becomes a public review. You can adjust the star threshold per location in your dashboard.</p></details>
+      <details><summary>Is review gating against Google's policies?</summary><p>Selectively routing only your highest raters to Google (and diverting lower ratings to a private form) is a form of "review gating." Google's review policies and the U.S. FTC's 2024 rule on review suppression discourage this practice, and Google can filter or remove reviews if it's detected. More5Stars lets you set the threshold per location — including a compliant mode that invites <em>all</em> customers to review while still capturing private feedback — so you choose how to operate. We don't fabricate reviews, post on customers' behalf, or offer incentives.</p></details>
+      <details><summary>How long does setup take?</summary><p>About 5 minutes. Add a location with its name and Google review URL, generate the QR code, and print it. That's it.</p></details>
+      <details><summary>Do you support multiple locations?</summary><p>Yes. Each location gets its own review page, QR code, Google URL, analytics, and private feedback inbox. Pricing is $247/month per location.</p></details>
+      <details><summary>What happens if I cancel?</summary><p>Cancel anytime — no contracts, no fees. Cancel within the 14-day trial and you pay nothing.</p></details>
+      <details><summary>What does the free trial include?</summary><p>The full product — unlimited scans, QR codes, analytics, private feedback capture, and support. A card is required to start, but you aren't charged until the trial ends.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<div class="wrap">
+  <div class="final">
+    <h2>Ready to get more 5-star reviews?</h2>
+    <p>Join 500+ local businesses using More5Stars to win on Google and catch problems before they go public.</p>
+    <a class="btn btn-primary" href="https://buy.stripe.com/5kQ00k4A0h1DdNbdULdfG0a">🚀 Start Your 14-Day Free Trial</a>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap foot-grid">
+    <div><span class="logo"><span class="mark">★</span> More5Stars</span><div style="margin-top:8px">Smart review routing for local businesses.</div></div>
+    <div class="foot-links">
+      <a href="/admin">Dashboard</a>
+      <a href="/r/demo">Live Demo</a>
+      <a href="mailto:hello@more5stars.net">Contact</a>
+    </div>
+  </div>
+  <div class="compliance">© 2026 More5Stars. All rights reserved. &nbsp;|&nbsp; Note on compliance: routing only top ratings to public review sites ("review gating") may conflict with Google's review policies and FTC guidance. More5Stars supports a compliant mode and is provided as a tool — operators are responsible for how they use it.</div>
+</footer>
+
+<script>
+// Live demo routing (front-end only)
+(function(){
+  const dstars = document.getElementById('dstars');
+  const dmsg = document.getElementById('dmsg');
+  const dreset = document.getElementById('dreset');
+  const stars = [...dstars.children];
+  function paint(n){ stars.forEach((s,i)=>s.classList.toggle('lit', i<n)); }
+  stars.forEach(s=>{
+    s.addEventListener('mouseenter',()=>paint(+s.dataset.v));
+    s.addEventListener('mouseleave',()=>paint(curr));
+    s.addEventListener('click',()=>choose(+s.dataset.v));
+  });
+  let curr=0;
+  function choose(v){
+    curr=v; paint(v);
+    if(v===5){
+      dmsg.innerHTML='<span class="ok">🎉 Thank you!</span><br>You\'d be sent to Google to post your 5-star review.';
+    } else {
+      dmsg.innerHTML='<span class="pr">🙏 We\'d love to make it right.</span><br>A private feedback form opens — this never goes public. The owner handles it directly.';
+    }
+    dreset.style.display='inline-block';
+  }
+  dreset.onclick=()=>{curr=0;paint(0);dmsg.textContent='Tap a star to rate us';dreset.style.display='none';};
+})();
+</script>
+</body>
+</html>

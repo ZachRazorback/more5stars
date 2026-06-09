@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<title>More5Stars — Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+  :root{--brand:#6C2BD9;--brand-2:#9B5DE5;--accent:#FFC83D;--ink:#160f24;--muted:#5e5670;--line:#ece7f5;--soft:#f7f4fd;--ok:#1f9d55;--warn:#e67e22;--bad:#c0392b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif;color:var(--ink);background:#f4f1fa}
+  a{color:var(--brand)}
+  .topbar{background:#fff;border-bottom:1px solid var(--line);height:62px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;position:sticky;top:0;z-index:10}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:800}
+  .logo .mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:flex;align-items:center;justify-content:center;color:#fff}
+  .wrap{max-width:1080px;margin:26px auto;padding:0 22px}
+  button{font-family:inherit;cursor:pointer;border:0;border-radius:10px;font-weight:700;font-size:14px;padding:10px 16px}
+  .btn-primary{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff}
+  .btn-light{background:var(--soft);color:var(--brand)}
+  .btn-sm{padding:7px 11px;font-size:13px}
+  input,select,textarea{font-family:inherit;font-size:14px;width:100%;border:1.5px solid var(--line);border-radius:9px;padding:10px 12px}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand)}
+  label{font-size:13px;font-weight:600;color:var(--muted);display:block;margin:0 0 5px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:18px}
+  /* LOGIN */
+  #login{max-width:380px;margin:80px auto}
+  #login h1{font-size:22px;margin-bottom:6px}
+  #login p{color:var(--muted);font-size:14px;margin-bottom:20px}
+  .field{margin-bottom:14px}
+  .err{color:var(--bad);font-size:13px;min-height:16px;margin-top:4px}
+  /* APP */
+  #app{display:none}
+  .grid{display:grid;grid-template-columns:300px 1fr;gap:18px;align-items:start}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .biz-item{display:flex;justify-content:space-between;align-items:center;padding:11px 12px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+  .biz-item:hover{background:var(--soft)}
+  .biz-item.active{background:var(--soft);border-color:var(--brand)}
+  .biz-item small{color:var(--muted);display:block;font-size:12px}
+  .pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--soft);color:var(--brand)}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .tab{background:#fff;border:1px solid var(--line);padding:8px 14px;border-radius:999px;font-weight:700;font-size:13px;color:var(--muted)}
+  .tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  @media(max-width:680px){.stat-row{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:var(--soft);border-radius:12px;padding:16px;text-align:center}
+  .kpi b{display:block;font-size:26px;color:var(--brand)}
+  .kpi span{font-size:12px;color:var(--muted);font-weight:600}
+  .bar{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px}
+  .bar .track{flex:1;height:12px;background:var(--soft);border-radius:6px;overflow:hidden}
+  .bar .fill{height:100%;background:linear-gradient(90deg,var(--brand),var(--brand-2))}
+  .bar .lbl{width:38px;font-weight:700}
+  .bar .cnt{width:42px;text-align:right;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+  .stars-cell{color:var(--accent);white-space:nowrap}
+  .tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .tag.open{background:#fff4e5;color:var(--warn)}
+  .tag.done{background:#e6f7ee;color:var(--ok)}
+  .muted{color:var(--muted)}
+  .empty{text-align:center;color:var(--muted);padding:34px}
+  .qr-box{text-align:center}
+  #qrcanvas{margin:14px auto;border-radius:12px}
+  .url-row{display:flex;gap:8px}
+  .url-row input{background:var(--soft)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(22,15,36,.45);z-index:100;align-items:center;justify-content:center;padding:20px}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;border-radius:18px;padding:26px;max-width:480px;width:100%;max-height:90vh;overflow:auto}
+  .modal h3{margin-bottom:16px}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .threshold-note{background:#fff8e6;border:1px solid #ffe39e;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#8a6d1f;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo"><span class="mark">★</span> More5Stars <span class="muted" style="font-weight:600;font-size:13px">Dashboard</span></span>
+  <div id="who" style="display:none;font-size:13px;color:var(--muted)"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="login" class="card">
+  <h1>Sign in</h1>
+  <p>Manage your locations, feedback, and analytics.</p>
+  <div class="field"><label>Email</label><input id="li-email" type="email" autocomplete="username" placeholder="admin@more5stars.net" /></div>
+  <div class="field"><label>Password</label><input id="li-pass" type="password" autocomplete="current-password" placeholder="••••••••" /></div>
+  <div class="err" id="li-err"></div>
+  <button class="btn-primary" style="width:100%" id="li-btn">Sign in</button>
+  <p class="hint" style="margin-top:14px">Default seed login: <code>admin@more5stars.net</code> / the <code>ADMIN_PASSWORD</code> you set (default <code>changeme123</code>).</p>
+</div>
+
+<!-- APP -->
+<div id="app" class="wrap">
+  <div class="grid">
+    <!-- SIDEBAR -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <strong>Locations</strong>
+        <button class="btn-light btn-sm" id="new-biz">+ New</button>
+      </div>
+      <div id="biz-list"></div>
+    </div>
+
+    <!-- MAIN -->
+    <div>
+      <div id="main-empty" class="card empty">Select a location, or add your first one.</div>
+      <div id="main" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div><h2 id="m-name" style="font-size:21px"></h2><span class="muted" id="m-slug" style="font-size:13px"></span></div>
+          <div>
+            <button class="btn-light btn-sm" id="m-edit">⚙ Settings</button>
+            <button class="btn-primary btn-sm" id="m-logout">Log out</button>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab active" data-tab="overview">Overview</div>
+          <div class="tab" data-tab="feedback">Private Feedback <span id="fb-count" class="pill"></span></div>
+          <div class="tab" data-tab="qr">QR Code &amp; Link</div>
+        </div>
+
+        <!-- OVERVIEW -->
+        <div class="tab-pane" id="pane-overview">
+          <div class="stat-row">
+            <div class="kpi"><b id="k-total">0</b><span>Total Ratings</span></div>
+            <div class="kpi"><b id="k-avg">0.0</b><span>Avg Rating</span></div>
+            <div class="kpi"><b id="k-conv">0%</b><span>→ Google</span></div>
+            <div class="kpi"><b id="k-open">0</b><span>Open Feedback</span></div>
+          </div>
+          <div class="card">
+            <strong>Rating distribution</strong>
+            <div id="dist" style="margin-top:12px"></div>
+          </div>
+          <div class="card">
+            <strong>Routing split</strong>
+            <p class="muted" style="font-size:13px;margin-top:6px">How taps were routed under the current threshold.</p>
+            <div id="split" style="margin-top:10px"></div>
+          </div>
+        </div>
+
+        <!-- FEEDBACK -->
+        <div class="tab-pane" id="pane-feedback" style="display:none">
+          <div class="card">
+            <table><thead><tr><th>When</th><th>Rating</th><th>Feedback</th><th>Contact</th><th>Status</th></tr></thead>
+            <tbody id="fb-rows"></tbody></table>
+            <div id="fb-empty" class="empty">No private feedback yet. When a customer rates below the threshold, it shows here.</div>
+          </div>
+        </div>
+
+        <!-- QR -->
+        <div class="tab-pane" id="pane-qr" style="display:none">
+          <div class="card qr-box">
+            <strong>Customer review link</strong>
+            <p class="muted" style="font-size:13px;margin:6px 0 12px">Share this link or print the QR. This is what your customers scan.</p>
+            <canvas id="qrcanvas" width="220" height="220"></canvas>
+            <div class="url-row">
+              <input id="qr-url" readonly />
+              <button class="btn-light" id="qr-copy">Copy</button>
+            </div>
+            <div style="margin-top:14px">
+              <button class="btn-primary btn-sm" id="qr-dl">⬇ Download PNG</button>
+              <a class="btn-light btn-sm" id="qr-open" style="text-decoration:none;display:inline-block" target="_blank">Open page ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT / CREATE MODAL -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3 id="modal-title">New location</h3>
+    <input type="hidden" id="f-id" />
+    <div class="field"><label>Business name *</label><input id="f-name" placeholder="Acme Plumbing" /></div>
+    <div class="field"><label>URL slug</label><input id="f-slug" placeholder="acme-plumbing" /><div class="hint">Used in the review link: /r/<span id="slug-preview">your-slug</span> · leave blank to auto-generate</div></div>
+    <div class="field"><label>Google review URL *</label><input id="f-google" placeholder="https://search.google.com/local/writereview?placeid=..." /><div class="hint">Where 5-star customers are sent. Get it from your Google Business Profile.</div></div>
+    <div class="row2">
+      <div class="field"><label>Logo text</label><input id="f-logo" maxlength="4" placeholder="A" /></div>
+      <div class="field"><label>Brand color</label><input id="f-color" type="color" value="#6C2BD9" style="height:42px;padding:4px" /></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Star threshold → Google</label>
+        <select id="f-threshold">
+          <option value="5">5★ only (recommended copy default)</option>
+          <option value="4">4★ and up</option>
+          <option value="6">Disabled — send everyone to feedback</option>
+        </select>
+      </div>
+      <div class="field"><label>Notify email</label><input id="f-notify" placeholder="owner@business.com" /></div>
+    </div>
+    <div class="threshold-note">Heads-up: sending only your top raters to Google ("review gating") may conflict with Google &amp; FTC review-suppression rules. Set the threshold to 1 to invite everyone (compliant mode) while still capturing feedback.</div>
+    <div class="field" id="active-wrap" style="margin-top:12px;display:none"><label><input type="checkbox" id="f-active" style="width:auto;margin-right:6px" checked>Active</label></div>
+    <div class="err" id="f-err"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn-primary" id="f-save" style="flex:1">Save</button>
+      <button class="btn-light" id="f-cancel">Cancel</button>
+      <button class="btn-light" id="f-delete" style="display:none;color:var(--bad)">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id)=>document.getElementById(id);
+const api = (url,opts={})=>fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...opts}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw d;return d;});
+let businesses=[], current=null;
+
+/* ---- AUTH ---- */
+async function checkAuth(){
+  try{ const me=await api('/api/admin/me'); enterApp(me.email); }
+  catch(e){ $('login').style.display='block'; $('app').style.display='none'; }
+}
+$('li-btn').onclick = login;
+$('li-pass').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+async function login(){
+  $('li-err').textContent='';
+  try{
+    const r=await api('/api/admin/login',{method:'POST',body:JSON.stringify({email:$('li-email').value,password:$('li-pass').value})});
+    enterApp(r.email);
+  }catch(e){ $('li-err').textContent=e.error||'Login failed'; }
+}
+function enterApp(email){
+  $('login').style.display='none'; $('app').style.display='block';
+  $('who').style.display='block'; $('who').textContent=email;
+  loadBusinesses();
+}
+$('m-logout') && ($('m-logout').onclick=async()=>{await api('/api/admin/logout',{method:'POST'});location.reload();});
+
+/* ---- BUSINESSES ---- */
+async function loadBusinesses(){
+  businesses = await api('/api/admin/businesses');
+  const list=$('biz-list'); list.innerHTML='';
+  if(!businesses.length){ list.innerHTML='<p class="muted" style="font-size:13px">No locations yet.</p>'; }
+  businesses.forEach(b=>{
+    const el=document.createElement('div');
+    el.className='biz-item'+(current&&current.id===b.id?' active':'');
+    el.innerHTML=`<div><strong>${esc(b.name)}</strong><small>/r/${esc(b.slug)}</small></div><span class="pill">${b.star_threshold>5?'off':b.star_threshold+'★+'}</span>`;
+    el.onclick=()=>selectBiz(b.id);
+    list.appendChild(el);
+  });
+  if(current){ const still=businesses.find(b=>b.id===current.id); if(still){selectBiz(still.id,true);} else {current=null;showEmpty();} }
+}
+function showEmpty(){ $('main').style.display='none'; $('main-empty').style.display='block'; }
+
+async function selectBiz(id){
+  current = businesses.find(b=>b.id===id); if(!current)return;
+  [...document.querySelectorAll('.biz-item')].forEach(e=>e.classList.remove('active'));
+  loadBusinesses.activeId=id;
+  $('main-empty').style.display='none'; $('main').style.display='block';
+  $('m-name').textContent=current.name; $('m-slug').textContent='/r/'+current.slug;
+  // refresh sidebar active state
+  [...$('biz-list').children].forEach(el=>{ el.classList.toggle('active', el.querySelector('small').textContent==='/r/'+current.slug); });
+  switchTab('overview');
+  await Promise.all([loadAnalytics(), loadFeedback()]);
+  setupQR();
+}
+
+/* ---- TABS ---- */
+function switchTab(name){
+  [...document.querySelectorAll('.tab')].forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
+  ['overview','feedback','qr'].forEach(p=>$('pane-'+p).style.display = p===name?'block':'none');
+}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>switchTab(t.dataset.tab));
+
+/* ---- ANALYTICS ---- */
+async function loadAnalytics(){
+  const a=await api('/api/admin/analytics?business_id='+current.id);
+  $('k-total').textContent=a.total_ratings;
+  $('k-avg').textContent=a.avg_rating.toFixed(1);
+  $('k-conv').textContent=a.google_conversion+'%';
+  $('k-open').textContent=a.open_feedback;
+  const max=Math.max(1,...a.distribution);
+  $('dist').innerHTML=[5,4,3,2,1].map(s=>{
+    const n=a.distribution[s-1];
+    return `<div class="bar"><span class="lbl">${s}★</span><div class="track"><div class="fill" style="width:${(n/max*100)}%"></div></div><span class="cnt">${n}</span></div>`;
+  }).join('');
+  $('split').innerHTML=`
+    <div class="bar"><span class="lbl" style="width:auto">Google</span><div class="track"><div class="fill" style="width:${pct(a.routed_google,a.total_ratings)}%"></div></div><span class="cnt">${a.routed_google}</span></div>
+    <div class="bar"><span class="lbl" style="width:auto">Private</span><div class="track"><div class="fill" style="width:${pct(a.routed_private,a.total_ratings)};background:var(--accent)"></div></div><span class="cnt">${a.routed_private}</span></div>`;
+}
+const pct=(n,d)=>d?(n/d*100).toFixed(0):0;
+
+/* ---- FEEDBACK ---- */
+async function loadFeedback(){
+  const rows=await api('/api/admin/feedback?business_id='+current.id);
+  $('fb-count').textContent=rows.filter(r=>!r.resolved).length||'';
+  const tb=$('fb-rows'); tb.innerHTML='';
+  $('fb-empty').style.display=rows.length?'none':'block';
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    const contact=[r.customer_name,r.customer_email,r.customer_phone].filter(Boolean).map(esc).join('<br>')||'<span class="muted">—</span>';
+    tr.innerHTML=`
+      <td class="muted" style="white-space:nowrap">${fmtDate(r.created_at)}</td>
+      <td class="stars-cell">${'★'.repeat(r.stars)}<span style="color:#e4def0">${'★'.repeat(5-r.stars)}</span></td>
+      <td>${esc(r.message)||'<span class="muted">(no message)</span>'}</td>
+      <td style="font-size:13px">${contact}</td>
+      <td><button class="tag ${r.resolved?'done':'open'}" data-id="${r.id}" data-res="${r.resolved?0:1}">${r.resolved?'Resolved':'Open'}</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('button.tag').forEach(b=>b.onclick=async()=>{
+    await api('/api/admin/feedback/'+b.dataset.id+'/resolve',{method:'POST',body:JSON.stringify({resolved:+b.dataset.res})});
+    loadFeedback();
+  });
+}
+
+/* ---- QR ---- */
+function setupQR(){
+  const url=location.origin+'/r/'+current.slug;
+  $('qr-url').value=url; $('qr-open').href=url;
+  QRCode.toCanvas($('qrcanvas'), url, {width:220,margin:1,color:{dark:current.brand_color||'#160f24',light:'#ffffff'}}, ()=>{});
+  $('qr-copy').onclick=()=>{navigator.clipboard.writeText(url);$('qr-copy').textContent='Copied!';setTimeout(()=>$('qr-copy').textContent='Copy',1200);};
+  $('qr-dl').onclick=()=>{const a=document.createElement('a');a.download=current.slug+'-qr.png';a.href=$('qrcanvas').toDataURL();a.click();};
+}
+
+/* ---- MODAL ---- */
+$('new-biz').onclick=()=>openModal();
+$('m-edit') && ($('m-edit').onclick=()=>openModal(current));
+$('f-cancel').onclick=()=>$('modal').classList.remove('show');
+$('f-name').addEventListener('input',()=>{ if(!$('f-id').value){ $('slug-preview').textContent=slugify($('f-slug').value||$('f-name').value)||'your-slug'; }});
+$('f-slug').addEventListener('input',()=>$('slug-preview').textContent=slugify($('f-slug').value)||'your-slug');
+
+function openModal(b){
+  $('f-err').textContent='';
+  $('modal-title').textContent=b?'Edit location':'New location';
+  $('f-id').value=b?b.id:'';
+  $('f-name').value=b?b.name:'';
+  $('f-slug').value=b?b.slug:''; $('f-slug').disabled=!!b;
+  $('f-google').value=b?b.google_review_url:'';
+  $('f-logo').value=b?(b.logo_text||''):'';
+  $('f-color').value=b?(b.brand_color||'#6C2BD9'):'#6C2BD9';
+  $('f-threshold').value=b?b.star_threshold:5;
+  $('f-notify').value=b?(b.notify_email||''):'';
+  $('slug-preview').textContent=(b?b.slug:'your-slug');
+  $('active-wrap').style.display=b?'block':'none';
+  $('f-active').checked=b?!!b.active:true;
+  $('f-delete').style.display=b?'inline-block':'none';
+  $('modal').classList.add('show');
+}
+$('f-save').onclick=async()=>{
+  $('f-err').textContent='';
+  const id=$('f-id').value;
+  const payload={
+    name:$('f-name').value, slug:$('f-slug').value, google_review_url:$('f-google').value,
+    logo_text:$('f-logo').value, brand_color:$('f-color').value,
+    star_threshold:parseInt($('f-threshold').value,10), notify_email:$('f-notify').value,
+    active:$('f-active').checked
+  };
+  try{
+    if(id){ const u=await api('/api/admin/businesses/'+id,{method:'PUT',body:JSON.stringify(payload)}); current=u; }
+    else { const c=await api('/api/admin/businesses',{method:'POST',body:JSON.stringify(payload)}); current=c; }
+    $('modal').classList.remove('show');
+    await loadBusinesses(); selectBiz(current.id);
+  }catch(e){ $('f-err').textContent=e.error||'Could not save'; }
+};
+$('f-delete').onclick=async()=>{
+  if(!confirm('Delete this location and all its feedback? This cannot be undone.'))return;
+  await api('/api/admin/businesses/'+$('f-id').value,{method:'DELETE'});
+  $('modal').classList.remove('show'); current=null; showEmpty(); loadBusinesses();
+};
+
+/* ---- utils ---- */
+function slugify(s){return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');}
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function fmtDate(s){const d=new Date(s.replace(' ','T')+'Z');return isNaN(d)?s:d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});}
+
+checkAuth();
+</script>
+</body>
+</html>

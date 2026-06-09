@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<title>Leave a Review</title>
+<style>
+  :root { --brand:#6C2BD9; --brand-2:#9B5DE5; --ink:#1a1325; --muted:#6b6477; --bg:#f6f4fb; --card:#fff; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         background:var(--bg); color:var(--ink); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { background:var(--card); width:100%; max-width:440px; border-radius:24px; padding:36px 28px;
+          box-shadow:0 20px 60px rgba(60,30,120,.14); text-align:center; }
+  .logo { width:72px; height:72px; border-radius:20px; margin:0 auto 18px;
+          background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff;
+          display:flex; align-items:center; justify-content:center; font-size:30px; font-weight:800; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  .sub { color:var(--muted); font-size:15px; margin:0 0 26px; }
+  .stars { display:flex; justify-content:center; gap:8px; margin:8px 0 6px; }
+  .star { font-size:46px; cursor:pointer; color:#e4def0; transition:transform .12s, color .12s; user-select:none; line-height:1; }
+  .star:hover, .star.lit { color:#FFC83D; }
+  .star:active { transform:scale(.88); }
+  .hint { color:var(--muted); font-size:13px; margin-top:6px; min-height:18px; }
+  .panel { display:none; margin-top:8px; animation:fade .3s ease; }
+  .panel.show { display:block; }
+  @keyframes fade { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;} }
+  .big { font-size:40px; margin:6px 0; }
+  .lead { font-size:17px; font-weight:600; margin:4px 0 2px; }
+  .muted { color:var(--muted); font-size:14px; margin:0 0 18px; }
+  input, textarea { width:100%; border:1.5px solid #e3ddf0; border-radius:12px; padding:13px 14px;
+                    font-size:15px; font-family:inherit; margin-bottom:12px; color:var(--ink); }
+  input:focus, textarea:focus { outline:none; border-color:var(--brand); }
+  textarea { min-height:96px; resize:vertical; }
+  .row { display:flex; gap:10px; }
+  .row > * { flex:1; }
+  button.primary { width:100%; border:0; border-radius:12px; padding:15px; font-size:16px; font-weight:700;
+            color:#fff; background:linear-gradient(135deg,var(--brand),var(--brand-2)); cursor:pointer; }
+  button.primary:active { transform:translateY(1px); }
+  button.primary:disabled { opacity:.6; cursor:default; }
+  .link { background:none; border:0; color:var(--muted); font-size:14px; margin-top:14px; cursor:pointer; text-decoration:underline; }
+  .foot { margin-top:22px; font-size:11px; color:#b3acc4; }
+  .err { color:#c0392b; font-size:13px; min-height:16px; }
+  .spinner { display:inline-block; width:18px; height:18px; border:2.5px solid rgba(255,255,255,.4);
+             border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:-3px; }
+  @keyframes spin { to{ transform:rotate(360deg);} }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="logo" id="logo">★</div>
+    <h1 id="title">Loading…</h1>
+    <p class="sub" id="subtitle">How was your experience?</p>
+
+    <!-- STEP 1: star picker -->
+    <div class="panel show" id="step-stars">
+      <div class="stars" id="stars"></div>
+      <div class="hint" id="hint">Tap a star to rate us</div>
+    </div>
+
+    <!-- STEP 2a: 5-star → Google -->
+    <div class="panel" id="step-google">
+      <div class="big">🎉</div>
+      <p class="lead">Thank you so much!</p>
+      <p class="muted">We're thrilled you had a great experience. Would you mind sharing it on Google? It takes 10 seconds and means the world to us.</p>
+      <button class="primary" id="go-google">Leave a Google Review →</button>
+      <button class="link" id="google-back">Go back</button>
+    </div>
+
+    <!-- STEP 2b: 1-4 stars → private feedback -->
+    <div class="panel" id="step-feedback">
+      <div class="big">🙏</div>
+      <p class="lead">We'd love to make this right</p>
+      <p class="muted">Your feedback goes straight to the owner — privately. Tell us what happened and how we can fix it.</p>
+      <textarea id="fb-message" placeholder="What could we have done better?"></textarea>
+      <div class="row">
+        <input id="fb-name" placeholder="Name (optional)" autocomplete="name" />
+        <input id="fb-phone" placeholder="Phone (optional)" autocomplete="tel" />
+      </div>
+      <input id="fb-email" type="email" placeholder="Email (optional)" autocomplete="email" />
+      <div class="err" id="fb-err"></div>
+      <button class="primary" id="fb-submit">Send Private Feedback</button>
+      <button class="link" id="fb-back">Go back</button>
+    </div>
+
+    <!-- STEP 3: thanks -->
+    <div class="panel" id="step-done">
+      <div class="big">✅</div>
+      <p class="lead">Thank you — we've got it.</p>
+      <p class="muted">The owner will personally review your feedback and reach out if you left contact details.</p>
+    </div>
+
+    <div class="foot">Powered by More5Stars</div>
+  </div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const slug = location.pathname.split('/r/')[1] || new URLSearchParams(location.search).get('biz') || 'demo';
+  let biz = null, chosen = 0;
+
+  function show(panel) {
+    ['step-stars','step-google','step-feedback','step-done'].forEach(p => $(p).classList.remove('show'));
+    $(panel).classList.add('show');
+  }
+  function setBrand(color) {
+    document.documentElement.style.setProperty('--brand', color);
+    // lighten for secondary
+    document.documentElement.style.setProperty('--brand-2', color);
+  }
+
+  // Build star row
+  const starsEl = $('stars');
+  for (let i = 1; i <= 5; i++) {
+    const s = document.createElement('span');
+    s.className = 'star'; s.textContent = '★'; s.dataset.v = i;
+    s.addEventListener('mouseenter', () => paint(i));
+    s.addEventListener('mouseleave', () => paint(chosen));
+    s.addEventListener('click', () => rate(i));
+    starsEl.appendChild(s);
+  }
+  function paint(n) {
+    [...starsEl.children].forEach((el, idx) => el.classList.toggle('lit', idx < n));
+  }
+
+  async function rate(stars) {
+    chosen = stars; paint(stars);
+    $('hint').textContent = '';
+    try {
+      const r = await fetch('/api/rating', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, stars })
+      });
+      const data = await r.json();
+      if (data.routed_to === 'google' && data.google_review_url) {
+        $('go-google').onclick = () => { window.location.href = data.google_review_url; };
+        show('step-google');
+      } else {
+        show('step-feedback');
+        $('fb-message').focus();
+      }
+    } catch (e) {
+      $('hint').textContent = 'Something went wrong. Please try again.';
+    }
+  }
+
+  $('google-back').onclick = () => { chosen = 0; paint(0); $('hint').textContent='Tap a star to rate us'; show('step-stars'); };
+  $('fb-back').onclick = () => { chosen = 0; paint(0); $('hint').textContent='Tap a star to rate us'; show('step-stars'); };
+
+  $('fb-submit').onclick = async function () {
+    const btn = this;
+    const email = $('fb-email').value.trim();
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $('fb-err').textContent = 'Please enter a valid email or leave it blank.'; return; }
+    $('fb-err').textContent = '';
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug, stars: chosen,
+          message: $('fb-message').value,
+          customer_name: $('fb-name').value,
+          customer_email: email,
+          customer_phone: $('fb-phone').value,
+        })
+      });
+      show('step-done');
+    } catch (e) {
+      $('fb-err').textContent = 'Could not send. Please try again.';
+      btn.disabled = false; btn.textContent = 'Send Private Feedback';
+    }
+  };
+
+  // Load business
+  fetch('/api/business/' + encodeURIComponent(slug))
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(b => {
+      biz = b;
+      $('title').textContent = b.name;
+      $('logo').textContent = b.logo_text || (b.name[0] || '★');
+      if (b.brand_color) setBrand(b.brand_color);
+      document.title = 'Review ' + b.name;
+    })
+    .catch(() => {
+      $('title').textContent = 'Business not found';
+      $('subtitle').textContent = 'This review link is not active.';
+      $('step-stars').classList.remove('show');
+    });
+})();
+</script>
+</body>
+</html>
