@@ -1,0 +1,28 @@
+# Render Blueprint for More5Stars.
+# Deploy: push this repo to GitHub, then in Render click "New +" -> "Blueprint"
+# and point it at the repo. Render reads this file and provisions everything.
+#
+# IMPORTANT: the persistent disk keeps your SQLite data alive across deploys.
+# A disk requires a paid instance type (Starter or higher) — the free tier
+# has NO persistent storage, so your data would reset on every redeploy.
+services:
+  - type: web
+    name: more5stars
+    runtime: node
+    plan: starter            # needs to be starter+ for the persistent disk below
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data      # must match the disk mountPath below
+      - key: ADMIN_EMAIL
+        sync: false           # set in the Render dashboard (don't commit secrets)
+      - key: ADMIN_PASSWORD
+        sync: false           # set a strong value in the Render dashboard
+    disk:
+      name: m5s-data
+      mountPath: /var/data
+      sizeGB: 1

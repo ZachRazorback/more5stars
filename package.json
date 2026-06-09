@@ -1,17 +1,21 @@
 {
   "name": "more5stars",
   "version": "1.0.0",
-  "description": "More5Stars — multi-tenant smart review routing SaaS.",
+  "description": "More5Stars — multi-tenant smart review routing SaaS. 5-star ratings go to Google; 1-4 stars are captured as private feedback.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "seed": "node db.js --seed",
     "dev": "node server.js"
   },
   "license": "UNLICENSED",
   "private": true,
+  "engines": {
+    "node": ">=18 <23"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.0.0",
+    "better-sqlite3": "^11.3.0",
     "cookie-parser": "^1.4.6",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
