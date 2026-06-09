@@ -177,7 +177,16 @@
     .then(b => {
       biz = b;
       $('title').textContent = b.name;
-      $('logo').textContent = b.logo_text || (b.name[0] || '★');
+      if (b.logo_url) {
+        const img = document.createElement('img');
+        img.src = b.logo_url;
+        img.alt = b.name;
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit';
+        $('logo').textContent = '';
+        $('logo').appendChild(img);
+      } else {
+        $('logo').textContent = b.logo_text || (b.name[0] || '★');
+      }
       if (b.brand_color) setBrand(b.brand_color);
       document.title = 'Review ' + b.name;
     })

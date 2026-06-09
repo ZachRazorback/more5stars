@@ -52,7 +52,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-app.use(express.json({ limit: '64kb' }));
+app.use(express.json({ limit: '2mb' })); // headroom for small base64 logo uploads
 app.use(cookieParser());
 
 // ---- Rate limiters ----
@@ -62,22 +62,37 @@ const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, standardHeade
   message: { error: 'Too many login attempts. Try again in 15 minutes.' } });
 app.use('/api/', apiLimiter);
 
-// ---- Simple in-memory session store (swap for Redis in prod) ----
-const sessions = new Map(); // token -> { adminId, email, created }
+// ---- Stateless signed-cookie sessions ----
+// Tokens are HMAC-signed, so they survive server restarts/redeploys (no in-memory
+// store to lose). The signing secret is stable across restarts: it's SESSION_SECRET
+// if set, otherwise derived from the seeded admin's password hash.
 const SESSION_TTL = 24 * 60 * 60 * 1000;
+const SESSION_SECRET = (() => {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  const a = db.prepare('SELECT password_hash FROM admins ORDER BY id LIMIT 1').get();
+  return crypto.createHash('sha256').update('m5s|' + (a ? a.password_hash : 'no-admin')).digest('hex');
+})();
 function makeSession(admin) {
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { adminId: admin.id, email: admin.email, created: Date.now() });
-  return token;
+  const payload = Buffer.from(JSON.stringify({ id: admin.id, email: admin.email, exp: Date.now() + SESSION_TTL })).toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  return payload + '.' + sig;
+}
+function readSession(token) {
+  if (typeof token !== 'string' || token.indexOf('.') < 0) return null;
+  const [payload, sig] = token.split('.');
+  let expected;
+  try { expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url'); } catch { return null; }
+  const a = Buffer.from(sig); const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  let data;
+  try { data = JSON.parse(Buffer.from(payload, 'base64url').toString()); } catch { return null; }
+  if (!data || !data.exp || Date.now() > data.exp) return null;
+  return data;
 }
 function requireAdmin(req, res, next) {
-  const token = req.cookies.m5s_session;
-  const s = token && sessions.get(token);
-  if (!s || Date.now() - s.created > SESSION_TTL) {
-    if (s) sessions.delete(token);
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  req.admin = s;
+  const data = readSession(req.cookies.m5s_session);
+  if (!data) return res.status(401).json({ error: 'Not authenticated' });
+  req.admin = { adminId: data.id, email: data.email };
   next();
 }
 const cookieOpts = { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: SESSION_TTL, path: '/' };
@@ -88,15 +103,22 @@ const clampStars = (v) => (isInt(v) && v >= 1 && v <= 5 ? v : null);
 const str = (v, max = 500) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const slugify = (s) => str(s, 60).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const isHttpUrl = (u) => /^https?:\/\/.+/i.test(u || '');
+// Accept an empty value, an http(s) URL, or a small base64 image data URL. Reject anything else.
+const validLogoUrl = (u) => {
+  if (typeof u !== 'string' || u === '') return '';
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(u) && u.length <= 1500000) return u;
+  if (/^https?:\/\/.+/i.test(u) && u.length <= 1000) return u;
+  return '';
+};
 
 // Prepared statements
 const Q = {
   bizBySlug: db.prepare('SELECT * FROM businesses WHERE slug = ? AND active = 1'),
   bizById: db.prepare('SELECT * FROM businesses WHERE id = ?'),
   allBiz: db.prepare('SELECT * FROM businesses ORDER BY created_at DESC'),
-  insBiz: db.prepare(`INSERT INTO businesses (slug, name, logo_text, brand_color, google_review_url, star_threshold, notify_email)
-                      VALUES (@slug, @name, @logo_text, @brand_color, @google_review_url, @star_threshold, @notify_email)`),
-  updBiz: db.prepare(`UPDATE businesses SET name=@name, logo_text=@logo_text, brand_color=@brand_color,
+  insBiz: db.prepare(`INSERT INTO businesses (slug, name, logo_text, logo_url, brand_color, google_review_url, star_threshold, notify_email)
+                      VALUES (@slug, @name, @logo_text, @logo_url, @brand_color, @google_review_url, @star_threshold, @notify_email)`),
+  updBiz: db.prepare(`UPDATE businesses SET name=@name, logo_text=@logo_text, logo_url=@logo_url, brand_color=@brand_color,
                       google_review_url=@google_review_url, star_threshold=@star_threshold,
                       notify_email=@notify_email, active=@active WHERE id=@id`),
   delBiz: db.prepare('DELETE FROM businesses WHERE id = ?'),
@@ -109,7 +131,7 @@ const Q = {
 };
 
 function publicBiz(b) {
-  return { slug: b.slug, name: b.name, logo_text: b.logo_text, brand_color: b.brand_color, star_threshold: b.star_threshold };
+  return { slug: b.slug, name: b.name, logo_text: b.logo_text, logo_url: b.logo_url, brand_color: b.brand_color, star_threshold: b.star_threshold };
 }
 
 // ============ PUBLIC API ============
@@ -181,8 +203,6 @@ app.post('/api/admin/login', loginLimiter, (req, res) => {
 });
 
 app.post('/api/admin/logout', (req, res) => {
-  const token = req.cookies.m5s_session;
-  if (token) sessions.delete(token);
   res.clearCookie('m5s_session', { path: '/' });
   res.json({ ok: true });
 });
@@ -201,6 +221,7 @@ function readBizInput(body) {
     slug,
     name: str(body.name, 120),
     logo_text: str(body.logo_text, 4) || (str(body.name, 1).toUpperCase() || '★'),
+    logo_url: validLogoUrl(body.logo_url),
     brand_color: /^#[0-9a-fA-F]{6}$/.test(body.brand_color || '') ? body.brand_color : '#6C2BD9',
     google_review_url: str(body.google_review_url, 500),
     star_threshold: isInt(body.star_threshold) && body.star_threshold >= 1 && body.star_threshold <= 6 ? body.star_threshold : 5,
@@ -234,6 +255,7 @@ app.put('/api/admin/businesses/:id', requireAdmin, writeLimiter, (req, res) => {
     id,
     name: data.name || existing.name,
     logo_text: data.logo_text,
+    logo_url: data.logo_url,
     brand_color: data.brand_color,
     google_review_url: data.google_review_url,
     star_threshold: data.star_threshold,

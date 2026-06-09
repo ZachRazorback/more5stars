@@ -175,8 +175,17 @@
     <div class="field"><label>Business name *</label><input id="f-name" placeholder="Acme Plumbing" /></div>
     <div class="field"><label>URL slug</label><input id="f-slug" placeholder="acme-plumbing" /><div class="hint">Used in the review link: /r/<span id="slug-preview">your-slug</span> · leave blank to auto-generate</div></div>
     <div class="field"><label>Google review URL *</label><input id="f-google" placeholder="https://search.google.com/local/writereview?placeid=..." /><div class="hint">Where 5-star customers are sent. Get it from your Google Business Profile.</div></div>
+    <div class="field">
+      <label>Logo / photo (optional)</label>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="logo-preview" style="width:48px;height:48px;border-radius:12px;flex:0 0 48px;background:var(--soft);display:flex;align-items:center;justify-content:center;overflow:hidden;font-weight:800;color:var(--brand)"></div>
+        <input type="file" id="f-logo-file" accept="image/png,image/jpeg,image/webp,image/gif" style="flex:1;border:0;padding:6px 0" />
+        <button type="button" class="btn-light btn-sm" id="f-logo-clear">Remove</button>
+      </div>
+      <div class="hint">Upload a logo or photo shown on the review page. Auto-resized. Falls back to the letter below if empty.</div>
+    </div>
     <div class="row2">
-      <div class="field"><label>Logo text</label><input id="f-logo" maxlength="4" placeholder="A" /></div>
+      <div class="field"><label>Logo letter (fallback)</label><input id="f-logo" maxlength="4" placeholder="A" /></div>
       <div class="field"><label>Brand color</label><input id="f-color" type="color" value="#6C2BD9" style="height:42px;padding:4px" /></div>
     </div>
     <div class="row2">
@@ -319,6 +328,35 @@ $('f-cancel').onclick=()=>$('modal').classList.remove('show');
 $('f-name').addEventListener('input',()=>{ if(!$('f-id').value){ $('slug-preview').textContent=slugify($('f-slug').value||$('f-name').value)||'your-slug'; }});
 $('f-slug').addEventListener('input',()=>$('slug-preview').textContent=slugify($('f-slug').value)||'your-slug');
 
+// ---- Logo upload (client-side resize -> small base64 data URL) ----
+let logoData='';
+function renderLogoPreview(){
+  const p=$('logo-preview');
+  if(logoData){ p.innerHTML='<img src="'+logoData+'" style="width:100%;height:100%;object-fit:cover">'; }
+  else { p.textContent=($('f-logo').value||'★'); }
+}
+$('f-logo').addEventListener('input',()=>{ if(!logoData) renderLogoPreview(); });
+$('f-logo-clear').onclick=()=>{ logoData=''; $('f-logo-file').value=''; renderLogoPreview(); };
+$('f-logo-file').addEventListener('change',function(){
+  const file=this.files&&this.files[0]; if(!file)return;
+  if(!/^image\//.test(file.type)){ $('f-err').textContent='Please choose an image file.'; return; }
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      const max=256; let w=img.width,h=img.height;
+      const scale=Math.min(1,max/Math.max(w,h)); w=Math.round(w*scale); h=Math.round(h*scale);
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      logoData=c.toDataURL('image/jpeg',0.85);
+      renderLogoPreview();
+    };
+    img.onerror=()=>{ $('f-err').textContent='Could not read that image.'; };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
 function openModal(b){
   $('f-err').textContent='';
   $('modal-title').textContent=b?'Edit location':'New location';
@@ -327,6 +365,7 @@ function openModal(b){
   $('f-slug').value=b?b.slug:''; $('f-slug').disabled=!!b;
   $('f-google').value=b?b.google_review_url:'';
   $('f-logo').value=b?(b.logo_text||''):'';
+  logoData=b?(b.logo_url||''):''; $('f-logo-file').value=''; renderLogoPreview();
   $('f-color').value=b?(b.brand_color||'#6C2BD9'):'#6C2BD9';
   $('f-threshold').value=b?b.star_threshold:5;
   $('f-notify').value=b?(b.notify_email||''):'';
@@ -341,7 +380,7 @@ $('f-save').onclick=async()=>{
   const id=$('f-id').value;
   const payload={
     name:$('f-name').value, slug:$('f-slug').value, google_review_url:$('f-google').value,
-    logo_text:$('f-logo').value, brand_color:$('f-color').value,
+    logo_text:$('f-logo').value, logo_url:logoData, brand_color:$('f-color').value,
     star_threshold:parseInt($('f-threshold').value,10), notify_email:$('f-notify').value,
     active:$('f-active').checked
   };

@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS businesses (
   slug              TEXT UNIQUE NOT NULL,
   name              TEXT NOT NULL,
   logo_text         TEXT,                       -- short text/initial shown if no logo
+  logo_url          TEXT,                       -- optional uploaded logo (data URL or http URL)
   brand_color       TEXT DEFAULT '#6C2BD9',
   google_review_url TEXT NOT NULL,              -- where 5-star raters are sent
   -- Routing config. star_threshold = minimum stars to send to Google.
@@ -72,6 +73,15 @@ CREATE TABLE IF NOT EXISTS admins (
 CREATE INDEX IF NOT EXISTS idx_feedback_biz ON feedback(business_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_events_biz ON rating_events(business_id, created_at);
 `);
+
+// ---- Migrations (idempotent) — safely add new columns to existing databases ----
+{
+  const cols = db.prepare('PRAGMA table_info(businesses)').all().map((c) => c.name);
+  if (!cols.includes('logo_url')) {
+    db.exec('ALTER TABLE businesses ADD COLUMN logo_url TEXT');
+    console.log('Migration: added businesses.logo_url');
+  }
+}
 
 function seed() {
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@more5stars.net').toLowerCase();
