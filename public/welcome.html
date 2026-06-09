@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<title>Welcome to More5Stars — Set up your account</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{--brand:#6C2BD9;--brand-2:#9B5DE5;--ink:#160f24;--muted:#5e5670;--line:#ece7f5;--soft:#f7f4fd;--bad:#c0392b;--ok:#1f9d55}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Plus Jakarta Sans",system-ui,sans-serif;background:radial-gradient(1000px 500px at 50% -10%,var(--soft),#f4f1fa);color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:#fff;width:100%;max-width:520px;border-radius:22px;box-shadow:0 24px 60px rgba(60,30,120,.14);padding:34px 30px}
+  .mark{width:46px;height:46px;border-radius:13px;background:linear-gradient(135deg,var(--brand),var(--brand-2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:800;margin-bottom:16px}
+  h1{font-size:24px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:15px;margin:8px 0 22px}
+  .step{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--brand);background:var(--soft);display:inline-block;padding:6px 12px;border-radius:999px;margin-bottom:14px}
+  label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 5px}
+  input{width:100%;border:1.5px solid var(--line);border-radius:11px;padding:13px 14px;font-size:15px;font-family:inherit;color:var(--ink)}
+  input:focus{outline:none;border-color:var(--brand)}
+  input[readonly]{background:var(--soft);color:var(--muted)}
+  .hint{font-size:12px;color:var(--muted);margin-top:5px}
+  .err{color:var(--bad);font-size:13.5px;min-height:18px;margin-top:10px}
+  button.primary{width:100%;margin-top:18px;border:0;border-radius:12px;padding:15px;font-size:16px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand-2));cursor:pointer}
+  button.primary:disabled{opacity:.6;cursor:default}
+  .center{text-align:center}
+  .big{font-size:42px;margin:6px 0}
+  a{color:var(--brand);font-weight:700;text-decoration:none}
+  .spinner{display:inline-block;width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-3px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .trialnote{background:#e6f7ee;color:#13703c;border-radius:10px;padding:10px 12px;font-size:13px;margin-top:14px}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark">★</div>
+
+    <!-- LOADING -->
+    <div id="loading">
+      <h1>Setting up your account…</h1>
+      <p class="sub">One moment while we confirm your trial.</p>
+    </div>
+
+    <!-- ERROR -->
+    <div id="error" style="display:none">
+      <h1>Hmm, something's off</h1>
+      <p class="sub" id="error-msg"></p>
+      <a href="/">← Back to home</a>
+    </div>
+
+    <!-- ALREADY DONE -->
+    <div id="done-already" style="display:none" class="center">
+      <div class="big">✅</div>
+      <h1>You're all set</h1>
+      <p class="sub">This account is already set up. You can log in to your dashboard.</p>
+      <a href="/admin"><button class="primary">Go to my dashboard →</button></a>
+    </div>
+
+    <!-- ONBOARDING FORM -->
+    <div id="form" style="display:none">
+      <span class="step">⭐ Trial started — last step</span>
+      <h1>Welcome! Let's set up your review page</h1>
+      <p class="sub">Your 14-day free trial is active. Create your login and add your business — takes 30 seconds.</p>
+
+      <label>Your email</label>
+      <input id="o-email" type="email" readonly />
+
+      <label>Create a password</label>
+      <input id="o-pass" type="password" placeholder="At least 8 characters" autocomplete="new-password" />
+
+      <label>Business name</label>
+      <input id="o-name" placeholder="e.g. Acme Plumbing" />
+
+      <label>Google review URL</label>
+      <input id="o-google" placeholder="https://g.page/r/..." />
+      <div class="hint">Where 5-star customers go. In your Google Business Profile, click "Ask for reviews" / "Get more reviews" to copy your review link.</div>
+
+      <div class="err" id="o-err"></div>
+      <button class="primary" id="o-submit">Create my account →</button>
+      <div class="trialnote">💳 No charge today. Your card is on file and the $247/mo plan begins after your 14-day trial unless you cancel.</div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const $=(id)=>document.getElementById(id);
+  const sid=new URLSearchParams(location.search).get('session_id');
+  function showError(msg){ $('loading').style.display='none'; $('error').style.display='block'; $('error-msg').textContent=msg; }
+
+  if(!sid){ showError('Missing checkout session. Please start your trial from the home page.'); return; }
+
+  fetch('/api/onboard/session?session_id='+encodeURIComponent(sid))
+    .then(async r=>{ const d=await r.json(); if(!r.ok) throw d; return d; })
+    .then(d=>{
+      $('loading').style.display='none';
+      if(d.already_onboarded){ $('done-already').style.display='block'; return; }
+      $('form').style.display='block';
+      $('o-email').value=d.email||'';
+    })
+    .catch(e=>showError(e.error||'Could not verify your checkout. Please contact support.'));
+
+  $('o-submit').onclick=async function(){
+    const btn=this;
+    const pass=$('o-pass').value, name=$('o-name').value.trim(), google=$('o-google').value.trim();
+    $('o-err').textContent='';
+    if(pass.length<8){ $('o-err').textContent='Password must be at least 8 characters.'; return; }
+    if(!name){ $('o-err').textContent='Please enter your business name.'; return; }
+    if(!/^https?:\/\/.+/i.test(google)){ $('o-err').textContent='Please enter a valid Google review URL (starting with https://).'; return; }
+    btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
+    try{
+      const r=await fetch('/api/onboard/complete',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+        body:JSON.stringify({session_id:sid,password:pass,name,google_review_url:google})});
+      const d=await r.json(); if(!r.ok) throw d;
+      location.href='/admin';
+    }catch(e){
+      $('o-err').textContent=e.error||'Could not complete setup. Please try again.';
+      btn.disabled=false; btn.textContent='Create my account →';
+    }
+  };
+})();
+</script>
+</body>
+</html>

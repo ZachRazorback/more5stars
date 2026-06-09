@@ -36,6 +36,12 @@ const PORT = process.env.PORT || 3000;
 const PROD = process.env.NODE_ENV === 'production';
 app.set('trust proxy', 1);
 
+// Stripe — initialized only if a secret key is configured (so the app still boots without it).
+const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || ''; // optional: use a fixed Price; else inline $247/mo
+const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || '14', 10);
+const PRICE_CENTS = parseInt(process.env.PRICE_CENTS || '24700', 10);
+const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
+
 // ---- Security headers / CSP ----
 app.use(helmet({
   contentSecurityPolicy: {
@@ -163,6 +169,12 @@ const Q = {
                            FROM accounts a ORDER BY a.created_at DESC`),
   insCompAccount: db.prepare(`INSERT INTO accounts (email, password_hash, subscription_status) VALUES (?, ?, 'comp')`),
   updAccountStatus: db.prepare('UPDATE accounts SET subscription_status = ? WHERE id = ?'),
+  insAccountFull: db.prepare(`INSERT INTO accounts (email, password_hash, stripe_customer_id, stripe_subscription_id, subscription_status, trial_ends_at)
+                              VALUES (@email, @password_hash, @stripe_customer_id, @stripe_subscription_id, @subscription_status, @trial_ends_at)`),
+  updAccountFromStripe: db.prepare(`UPDATE accounts SET password_hash=@password_hash, stripe_customer_id=@stripe_customer_id,
+                                    stripe_subscription_id=@stripe_subscription_id, subscription_status=@subscription_status,
+                                    trial_ends_at=@trial_ends_at WHERE id=@id`),
+  accountBySubId: db.prepare('SELECT * FROM accounts WHERE stripe_subscription_id = ?'),
 };
 
 function publicBiz(b) {
@@ -189,6 +201,96 @@ app.get('/api/qr.png', async (req, res) => {
   } catch (e) {
     res.status(500).send('qr error');
   }
+});
+
+// ---- Self-serve signup (Stripe Checkout + onboarding) ----
+
+// Start a 14-day free trial: create a subscription Checkout Session, redirect to Stripe.
+app.get('/start-trial', async (req, res) => {
+  if (!stripe) return res.status(503).send('Checkout is not configured yet. Please contact us.');
+  const origin = `${req.protocol}://${req.get('host')}`;
+  try {
+    const lineItem = STRIPE_PRICE_ID
+      ? { price: STRIPE_PRICE_ID, quantity: 1 }
+      : { quantity: 1, price_data: { currency: 'usd', unit_amount: PRICE_CENTS, recurring: { interval: 'month' }, product_data: { name: 'More5Stars — Smart Review Routing' } } };
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: [lineItem],
+      subscription_data: { trial_period_days: TRIAL_DAYS },
+      payment_method_collection: 'always',          // card on file during trial
+      allow_promotion_codes: true,
+      billing_address_collection: 'auto',
+      success_url: `${origin}/welcome?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/?canceled=1`,
+    });
+    res.redirect(303, session.url);
+  } catch (e) {
+    console.error('checkout error:', e.message);
+    res.status(500).send('Could not start checkout. Please try again.');
+  }
+});
+
+// Verify a completed Checkout Session and return the email to prefill onboarding.
+app.get('/api/onboard/session', async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'not configured' });
+  const sid = str(req.query.session_id, 100);
+  if (!sid.startsWith('cs_')) return res.status(400).json({ error: 'invalid session' });
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sid);
+    if (session.status !== 'complete') return res.status(400).json({ error: 'Checkout not complete yet.' });
+    const email = (session.customer_details?.email || session.customer_email || '').toLowerCase();
+    const existing = email ? Q.accountByEmail.get(email) : null;
+    res.json({ email, already_onboarded: !!(existing && existing.password_hash) });
+  } catch (e) {
+    res.status(400).json({ error: 'Could not verify your checkout session.' });
+  }
+});
+
+// Complete onboarding: verify session, create the account + business, log them in.
+app.post('/api/onboard/complete', writeLimiter, async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'not configured' });
+  const sid = str(req.body.session_id, 100);
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  if (!sid.startsWith('cs_')) return res.status(400).json({ error: 'invalid session' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+
+  const biz = readBizInput(req.body);
+  if (!biz.name) return res.status(400).json({ error: 'Business name is required.' });
+  if (!isHttpUrl(biz.google_review_url)) return res.status(400).json({ error: 'A valid Google review URL is required.' });
+
+  let session;
+  try { session = await stripe.checkout.sessions.retrieve(sid, { expand: ['subscription'] }); }
+  catch (e) { return res.status(400).json({ error: 'Could not verify your checkout session.' }); }
+  if (session.status !== 'complete') return res.status(400).json({ error: 'Checkout not complete.' });
+
+  const email = (session.customer_details?.email || session.customer_email || '').toLowerCase();
+  if (!email) return res.status(400).json({ error: 'No email on the checkout session.' });
+  const sub = session.subscription;
+  const subId = typeof sub === 'string' ? sub : (sub && sub.id) || null;
+  const custId = typeof session.customer === 'string' ? session.customer : (session.customer && session.customer.id) || null;
+  const status = (sub && sub.status) || 'trialing';
+  const trialEnds = sub && sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
+  const hash = bcrypt.hashSync(password, 12);
+
+  let account = Q.accountByEmail.get(email);
+  if (account) {
+    Q.updAccountFromStripe.run({ id: account.id, password_hash: hash, stripe_customer_id: custId, stripe_subscription_id: subId, subscription_status: status, trial_ends_at: trialEnds });
+  } else {
+    const info = Q.insAccountFull.run({ email, password_hash: hash, stripe_customer_id: custId, stripe_subscription_id: subId, subscription_status: status, trial_ends_at: trialEnds });
+    account = Q.accountById.get(info.lastInsertRowid);
+  }
+
+  // Create their business (idempotent — skip if they already have one).
+  if (Q.bizByAccount.all(account.id).length === 0) {
+    let base = biz.slug || 'business', slug = base, i = 1;
+    while (db.prepare('SELECT id FROM businesses WHERE slug=?').get(slug)) { slug = base + '-' + (++i); }
+    biz.slug = slug;
+    biz.account_id = account.id;
+    try { Q.insBiz.run(biz); } catch (e) { return res.status(400).json({ error: 'Could not create your business.' }); }
+  }
+
+  res.cookie('m5s_session', makeSession(account.id, 'customer', email), cookieOpts);
+  res.json({ ok: true });
 });
 
 // Business config for the rating page
@@ -414,7 +516,9 @@ app.get('/api/admin/analytics', requireAuth, (req, res) => {
 const ALLOWED_STATUSES = ['trialing', 'active', 'past_due', 'canceled', 'comp'];
 function daysLeft(trial_ends_at) {
   if (!trial_ends_at) return null;
-  const ms = new Date(trial_ends_at.replace(' ', 'T') + 'Z').getTime() - Date.now();
+  // Accept both ISO ("...T...Z") and SQLite datetime ("YYYY-MM-DD HH:MM:SS").
+  const t = trial_ends_at.includes('T') ? trial_ends_at : trial_ends_at.replace(' ', 'T') + 'Z';
+  const ms = new Date(t).getTime() - Date.now();
   return isNaN(ms) ? null : Math.ceil(ms / 86400000);
 }
 
