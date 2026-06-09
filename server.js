@@ -110,7 +110,7 @@ const cookieOpts = { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: SESS
 
 // A business is "live" (review page works) if it's house-owned (account_id NULL)
 // or its owning account's subscription is active/trialing.
-const LIVE_STATUSES = ['active', 'trialing'];
+const LIVE_STATUSES = ['active', 'trialing', 'comp']; // 'comp' = free friend/comped account
 function isBizLive(b) {
   if (b.account_id == null) return true;            // house-owned → always live
   const acct = Q.accountById.get(b.account_id);
@@ -157,6 +157,12 @@ const Q = {
   adminByEmail: db.prepare('SELECT * FROM admins WHERE email = ?'),
   accountByEmail: db.prepare('SELECT * FROM accounts WHERE email = ?'),
   accountById: db.prepare('SELECT * FROM accounts WHERE id = ?'),
+  allAccounts: db.prepare(`SELECT a.id, a.email, a.subscription_status, a.trial_ends_at, a.created_at,
+                                  (SELECT name FROM businesses WHERE account_id = a.id ORDER BY created_at LIMIT 1) AS business_name,
+                                  (SELECT COUNT(*) FROM businesses WHERE account_id = a.id) AS business_count
+                           FROM accounts a ORDER BY a.created_at DESC`),
+  insCompAccount: db.prepare(`INSERT INTO accounts (email, password_hash, subscription_status) VALUES (?, ?, 'comp')`),
+  updAccountStatus: db.prepare('UPDATE accounts SET subscription_status = ? WHERE id = ?'),
 };
 
 function publicBiz(b) {
@@ -401,6 +407,51 @@ app.get('/api/admin/analytics', requireAuth, (req, res) => {
     open_feedback: openFeedback,
     timeseries: last30,
   });
+});
+
+// ============ SUPER-ADMIN: ACCOUNTS (customers) ============
+
+const ALLOWED_STATUSES = ['trialing', 'active', 'past_due', 'canceled', 'comp'];
+function daysLeft(trial_ends_at) {
+  if (!trial_ends_at) return null;
+  const ms = new Date(trial_ends_at.replace(' ', 'T') + 'Z').getTime() - Date.now();
+  return isNaN(ms) ? null : Math.ceil(ms / 86400000);
+}
+
+// List every customer account (super-admin only).
+app.get('/api/admin/accounts', requireSuper, (req, res) => {
+  const rows = Q.allAccounts.all().map((a) => ({
+    id: a.id,
+    email: a.email,
+    business_name: a.business_name,
+    business_count: a.business_count,
+    subscription_status: a.subscription_status,
+    days_left: daysLeft(a.trial_ends_at),
+    customer_since: a.created_at,
+  }));
+  res.json(rows);
+});
+
+// Create a free "comp" account for a friend (super-admin only). Full access, no Stripe, never charged.
+app.post('/api/admin/accounts/comp', requireSuper, writeLimiter, (req, res) => {
+  const email = str(req.body.email, 200).toLowerCase();
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'valid email required' });
+  if (password.length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
+  if (Q.accountByEmail.get(email) || Q.adminByEmail.get(email)) return res.status(409).json({ error: 'an account with that email already exists' });
+  const hash = bcrypt.hashSync(password, 12);
+  const info = Q.insCompAccount.run(email, hash);
+  res.status(201).json({ ok: true, id: info.lastInsertRowid, email, subscription_status: 'comp' });
+});
+
+// Change an account's status (e.g., comp ↔ canceled) — super-admin only.
+app.post('/api/admin/accounts/:id/status', requireSuper, writeLimiter, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const status = str(req.body.status, 20);
+  if (!ALLOWED_STATUSES.includes(status)) return res.status(400).json({ error: 'invalid status' });
+  if (!Q.accountById.get(id)) return res.status(404).json({ error: 'not found' });
+  Q.updAccountStatus.run(status, id);
+  res.json({ ok: true });
 });
 
 // ============ STATIC + PAGES ============

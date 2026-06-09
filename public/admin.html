@@ -75,7 +75,10 @@
 <body>
 <div class="topbar">
   <span class="logo"><span class="mark">★</span> More5Stars <span class="muted" style="font-weight:600;font-size:13px">Dashboard</span></span>
-  <div id="who" style="display:none;font-size:13px;color:var(--muted)"></div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <button id="customers-btn" class="btn-light btn-sm" style="display:none">👥 Customers</button>
+    <div id="who" style="display:none;font-size:13px;color:var(--muted)"></div>
+  </div>
 </div>
 
 <!-- LOGIN -->
@@ -208,14 +211,44 @@
   </div>
 </div>
 
+<!-- CUSTOMERS (super-admin) MODAL -->
+<div class="modal-bg" id="acct-modal">
+  <div class="modal" style="max-width:760px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h3 style="margin:0">Customers</h3>
+      <button class="btn-light btn-sm" id="acct-close">Close</button>
+    </div>
+    <p class="muted" style="font-size:13px;margin-bottom:14px">Every account, its status, days left, and how long they've been a customer.</p>
+    <div style="overflow:auto">
+      <table>
+        <thead><tr><th>Business</th><th>Email</th><th>Status</th><th>Days left</th><th>Customer since</th><th></th></tr></thead>
+        <tbody id="acct-rows"></tbody>
+      </table>
+    </div>
+    <div id="acct-empty" class="empty" style="display:none">No customer accounts yet. Paying signups and free accounts appear here.</div>
+
+    <div class="card" style="margin-top:18px;background:var(--soft);border:0">
+      <strong>Add a free account (for friends)</strong>
+      <p class="muted" style="font-size:12.5px;margin:4px 0 12px">Creates a full-access account with no Stripe and no charges. Share the login with them.</p>
+      <div class="row2">
+        <div class="field" style="margin:0"><label>Email</label><input id="comp-email" type="email" placeholder="friend@email.com" /></div>
+        <div class="field" style="margin:0"><label>Temporary password</label><input id="comp-pass" placeholder="at least 8 characters" /></div>
+      </div>
+      <div class="err" id="comp-err" style="margin-top:6px"></div>
+      <button class="btn-primary btn-sm" id="comp-add" style="margin-top:8px">Create free account</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = (id)=>document.getElementById(id);
 const api = (url,opts={})=>fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...opts}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw d;return d;});
 let businesses=[], current=null;
 
 /* ---- AUTH ---- */
+let myRole='super';
 async function checkAuth(){
-  try{ const me=await api('/api/admin/me'); enterApp(me.email); }
+  try{ const me=await api('/api/admin/me'); enterApp(me.email, me.role); }
   catch(e){ $('login').style.display='block'; $('app').style.display='none'; }
 }
 $('li-btn').onclick = login;
@@ -224,12 +257,14 @@ async function login(){
   $('li-err').textContent='';
   try{
     const r=await api('/api/admin/login',{method:'POST',body:JSON.stringify({email:$('li-email').value,password:$('li-pass').value})});
-    enterApp(r.email);
+    enterApp(r.email, r.role);
   }catch(e){ $('li-err').textContent=e.error||'Login failed'; }
 }
-function enterApp(email){
+function enterApp(email, role){
+  myRole = role || 'super';
   $('login').style.display='none'; $('app').style.display='block';
   $('who').style.display='block'; $('who').textContent=email;
+  $('customers-btn').style.display = myRole==='super' ? 'inline-block' : 'none';
   loadBusinesses();
 }
 $('m-logout') && ($('m-logout').onclick=async()=>{await api('/api/admin/logout',{method:'POST'});location.reload();});
@@ -401,6 +436,47 @@ $('f-delete').onclick=async()=>{
   if(!confirm('Delete this location and all its feedback? This cannot be undone.'))return;
   await api('/api/admin/businesses/'+$('f-id').value,{method:'DELETE'});
   $('modal').classList.remove('show'); current=null; showEmpty(); loadBusinesses();
+};
+
+/* ---- CUSTOMERS (super-admin) ---- */
+$('customers-btn').onclick=()=>{ $('acct-modal').classList.add('show'); loadAccounts(); };
+$('acct-close').onclick=()=>$('acct-modal').classList.remove('show');
+const STATUS_COLORS={comp:'#1f9d55',active:'#1f9d55',trialing:'#6C2BD9',past_due:'#e67e22',canceled:'#c0392b'};
+async function loadAccounts(){
+  let rows=[];
+  try{ rows=await api('/api/admin/accounts'); }catch(e){ return; }
+  $('acct-empty').style.display = rows.length?'none':'block';
+  const tb=$('acct-rows'); tb.innerHTML='';
+  rows.forEach(a=>{
+    const color=STATUS_COLORS[a.subscription_status]||'#5e5670';
+    const dleft = a.subscription_status==='comp' ? '∞' : (a.days_left==null?'—':a.days_left);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td><strong>${esc(a.business_name||'—')}</strong>${a.business_count>1?` <span class="muted">+${a.business_count-1}</span>`:''}</td>
+      <td style="font-size:13px">${esc(a.email)}</td>
+      <td><span class="tag" style="background:${color}1a;color:${color}">${esc(a.subscription_status)}</span></td>
+      <td>${dleft}</td>
+      <td class="muted" style="font-size:13px;white-space:nowrap">${fmtDate(a.customer_since)}</td>
+      <td>${a.subscription_status==='comp'
+            ? `<button class="btn-light btn-sm" data-cancel="${a.id}" style="color:var(--bad)">Revoke</button>`
+            : (a.subscription_status==='canceled'
+               ? `<button class="btn-light btn-sm" data-comp="${a.id}">Make free</button>` : '')}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('Revoke free access? Their dashboard and review page will lock.'))return;
+    await api('/api/admin/accounts/'+b.dataset.cancel+'/status',{method:'POST',body:JSON.stringify({status:'canceled'})}); loadAccounts();
+  });
+  tb.querySelectorAll('[data-comp]').forEach(b=>b.onclick=async()=>{
+    await api('/api/admin/accounts/'+b.dataset.comp+'/status',{method:'POST',body:JSON.stringify({status:'comp'})}); loadAccounts();
+  });
+}
+$('comp-add').onclick=async()=>{
+  $('comp-err').textContent='';
+  try{
+    await api('/api/admin/accounts/comp',{method:'POST',body:JSON.stringify({email:$('comp-email').value,password:$('comp-pass').value})});
+    $('comp-email').value=''; $('comp-pass').value=''; loadAccounts();
+  }catch(e){ $('comp-err').textContent=e.error||'Could not create account'; }
 };
 
 /* ---- utils ---- */
