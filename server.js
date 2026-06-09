@@ -73,8 +73,9 @@ const SESSION_SECRET = (() => {
   const a = db.prepare('SELECT password_hash FROM admins ORDER BY id LIMIT 1').get();
   return crypto.createHash('sha256').update('m5s|' + (a ? a.password_hash : 'no-admin')).digest('hex');
 })();
-function makeSession(admin) {
-  const payload = Buffer.from(JSON.stringify({ id: admin.id, email: admin.email, exp: Date.now() + SESSION_TTL })).toString('base64url');
+// A session carries: sub (admin id or account id), role ('super' | 'customer'), email.
+function makeSession(sub, role, email) {
+  const payload = Buffer.from(JSON.stringify({ sub, role, email, exp: Date.now() + SESSION_TTL })).toString('base64url');
   const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
   return payload + '.' + sig;
 }
@@ -90,13 +91,37 @@ function readSession(token) {
   if (!data || !data.exp || Date.now() > data.exp) return null;
   return data;
 }
-function requireAdmin(req, res, next) {
+// Require a logged-in user (super-admin or customer). Backward-compatible with
+// pre-multi-account cookies (which had {id,email} and no role → treated as super).
+function requireAuth(req, res, next) {
   const data = readSession(req.cookies.m5s_session);
   if (!data) return res.status(401).json({ error: 'Not authenticated' });
-  req.admin = { adminId: data.id, email: data.email };
+  req.user = { id: data.sub ?? data.id, role: data.role || 'super', email: data.email };
   next();
 }
+const requireAdmin = requireAuth; // alias — endpoints below add their own ownership checks
+function requireSuper(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.user.role !== 'super') return res.status(403).json({ error: 'Forbidden' });
+    next();
+  });
+}
 const cookieOpts = { httpOnly: true, sameSite: 'lax', secure: PROD, maxAge: SESSION_TTL, path: '/' };
+
+// A business is "live" (review page works) if it's house-owned (account_id NULL)
+// or its owning account's subscription is active/trialing.
+const LIVE_STATUSES = ['active', 'trialing'];
+function isBizLive(b) {
+  if (b.account_id == null) return true;            // house-owned → always live
+  const acct = Q.accountById.get(b.account_id);
+  return !!acct && LIVE_STATUSES.includes(acct.subscription_status);
+}
+// Can this user manage this business? Super → any. Customer → only their own.
+function userOwnsBiz(user, b) {
+  if (!b) return false;
+  if (user.role === 'super') return true;
+  return b.account_id === user.id;
+}
 
 // ---- Validation helpers ----
 const isInt = (v) => Number.isInteger(v);
@@ -117,8 +142,9 @@ const Q = {
   bizBySlug: db.prepare('SELECT * FROM businesses WHERE slug = ? AND active = 1'),
   bizById: db.prepare('SELECT * FROM businesses WHERE id = ?'),
   allBiz: db.prepare('SELECT * FROM businesses ORDER BY created_at DESC'),
-  insBiz: db.prepare(`INSERT INTO businesses (slug, name, logo_text, logo_url, brand_color, google_review_url, star_threshold, notify_email)
-                      VALUES (@slug, @name, @logo_text, @logo_url, @brand_color, @google_review_url, @star_threshold, @notify_email)`),
+  bizByAccount: db.prepare('SELECT * FROM businesses WHERE account_id = ? ORDER BY created_at DESC'),
+  insBiz: db.prepare(`INSERT INTO businesses (slug, name, logo_text, logo_url, brand_color, google_review_url, star_threshold, notify_email, account_id)
+                      VALUES (@slug, @name, @logo_text, @logo_url, @brand_color, @google_review_url, @star_threshold, @notify_email, @account_id)`),
   updBiz: db.prepare(`UPDATE businesses SET name=@name, logo_text=@logo_text, logo_url=@logo_url, brand_color=@brand_color,
                       google_review_url=@google_review_url, star_threshold=@star_threshold,
                       notify_email=@notify_email, active=@active WHERE id=@id`),
@@ -129,6 +155,8 @@ const Q = {
   feedbackByBiz: db.prepare('SELECT * FROM feedback WHERE business_id = ? ORDER BY created_at DESC LIMIT 500'),
   resolveFeedback: db.prepare('UPDATE feedback SET resolved = ? WHERE id = ?'),
   adminByEmail: db.prepare('SELECT * FROM admins WHERE email = ?'),
+  accountByEmail: db.prepare('SELECT * FROM accounts WHERE email = ?'),
+  accountById: db.prepare('SELECT * FROM accounts WHERE id = ?'),
 };
 
 function publicBiz(b) {
@@ -161,6 +189,7 @@ app.get('/api/qr.png', async (req, res) => {
 app.get('/api/business/:slug', (req, res) => {
   const b = Q.bizBySlug.get(str(req.params.slug, 60).toLowerCase());
   if (!b) return res.status(404).json({ error: 'Business not found' });
+  if (!isBizLive(b)) return res.json({ locked: true, name: b.name });
   res.json(publicBiz(b));
 });
 
@@ -171,6 +200,7 @@ app.post('/api/rating', writeLimiter, (req, res) => {
   const stars = clampStars(req.body.stars);
   const b = Q.bizBySlug.get(slug);
   if (!b) return res.status(404).json({ error: 'Business not found' });
+  if (!isBizLive(b)) return res.status(403).json({ error: 'This review page is currently unavailable.' });
   if (!stars) return res.status(400).json({ error: 'stars must be an integer 1-5' });
 
   const goGoogle = stars >= b.star_threshold;
@@ -190,6 +220,7 @@ app.post('/api/feedback', writeLimiter, (req, res) => {
   const stars = clampStars(req.body.stars);
   const b = Q.bizBySlug.get(slug);
   if (!b) return res.status(404).json({ error: 'Business not found' });
+  if (!isBizLive(b)) return res.status(403).json({ error: 'This review page is currently unavailable.' });
   if (!stars) return res.status(400).json({ error: 'invalid stars' });
 
   const row = {
@@ -211,16 +242,26 @@ app.post('/api/feedback', writeLimiter, (req, res) => {
 
 // ============ ADMIN AUTH ============
 
+const DUMMY_HASH = '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv';
 app.post('/api/admin/login', loginLimiter, (req, res) => {
   const email = str(req.body.email, 200).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password : '';
+
+  // 1) Super-admin (you)
   const admin = Q.adminByEmail.get(email);
-  // constant-ish time: always run a compare
-  const ok = admin ? bcrypt.compareSync(password, admin.password_hash) : bcrypt.compareSync(password, '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv');
-  if (!admin || !ok) return res.status(401).json({ error: 'Invalid email or password' });
-  const token = makeSession(admin);
-  res.cookie('m5s_session', token, cookieOpts);
-  res.json({ ok: true, email: admin.email });
+  if (admin && bcrypt.compareSync(password, admin.password_hash)) {
+    res.cookie('m5s_session', makeSession(admin.id, 'super', admin.email), cookieOpts);
+    return res.json({ ok: true, email: admin.email, role: 'super' });
+  }
+  // 2) Customer account (self-serve). Only if a password has been set (onboarding done).
+  const acct = Q.accountByEmail.get(email);
+  if (acct && acct.password_hash && bcrypt.compareSync(password, acct.password_hash)) {
+    res.cookie('m5s_session', makeSession(acct.id, 'customer', acct.email), cookieOpts);
+    return res.json({ ok: true, email: acct.email, role: 'customer' });
+  }
+  // constant-time-ish miss
+  bcrypt.compareSync(password, DUMMY_HASH);
+  return res.status(401).json({ error: 'Invalid email or password' });
 });
 
 app.post('/api/admin/logout', (req, res) => {
@@ -228,12 +269,20 @@ app.post('/api/admin/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/admin/me', requireAdmin, (req, res) => res.json({ email: req.admin.email }));
+app.get('/api/admin/me', requireAuth, (req, res) => {
+  const out = { email: req.user.email, role: req.user.role };
+  if (req.user.role === 'customer') {
+    const acct = Q.accountById.get(req.user.id);
+    if (acct) { out.subscription_status = acct.subscription_status; out.trial_ends_at = acct.trial_ends_at; }
+  }
+  res.json(out);
+});
 
 // ============ ADMIN: BUSINESSES ============
 
-app.get('/api/admin/businesses', requireAdmin, (req, res) => {
-  res.json(Q.allBiz.all());
+// Super-admin sees every business; a customer sees only their own.
+app.get('/api/admin/businesses', requireAuth, (req, res) => {
+  res.json(req.user.role === 'super' ? Q.allBiz.all() : Q.bizByAccount.all(req.user.id));
 });
 
 function readBizInput(body) {
@@ -250,8 +299,11 @@ function readBizInput(body) {
   };
 }
 
-app.post('/api/admin/businesses', requireAdmin, writeLimiter, (req, res) => {
+app.post('/api/admin/businesses', requireAuth, writeLimiter, (req, res) => {
   const data = readBizInput(req.body);
+  // Super-admin creates house-owned businesses (account_id NULL); a customer's
+  // new business belongs to their own account.
+  data.account_id = req.user.role === 'super' ? null : req.user.id;
   if (!data.name) return res.status(400).json({ error: 'name is required' });
   if (!data.slug) return res.status(400).json({ error: 'could not derive slug' });
   if (!isHttpUrl(data.google_review_url)) return res.status(400).json({ error: 'google_review_url must be a valid http(s) URL' });
@@ -266,10 +318,11 @@ app.post('/api/admin/businesses', requireAdmin, writeLimiter, (req, res) => {
   }
 });
 
-app.put('/api/admin/businesses/:id', requireAdmin, writeLimiter, (req, res) => {
+app.put('/api/admin/businesses/:id', requireAuth, writeLimiter, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const existing = Q.bizById.get(id);
   if (!existing) return res.status(404).json({ error: 'not found' });
+  if (!userOwnsBiz(req.user, existing)) return res.status(403).json({ error: 'Forbidden' });
   const data = readBizInput(req.body);
   if (!isHttpUrl(data.google_review_url)) return res.status(400).json({ error: 'google_review_url must be a valid http(s) URL' });
   const payload = {
@@ -288,33 +341,41 @@ app.put('/api/admin/businesses/:id', requireAdmin, writeLimiter, (req, res) => {
 });
 function body_active(v, fallback) { return v === undefined ? fallback : (v ? 1 : 0); }
 
-app.delete('/api/admin/businesses/:id', requireAdmin, writeLimiter, (req, res) => {
+app.delete('/api/admin/businesses/:id', requireAuth, writeLimiter, (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (!Q.bizById.get(id)) return res.status(404).json({ error: 'not found' });
+  const existing = Q.bizById.get(id);
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  if (!userOwnsBiz(req.user, existing)) return res.status(403).json({ error: 'Forbidden' });
   Q.delBiz.run(id);
   res.json({ ok: true });
 });
 
 // ============ ADMIN: FEEDBACK ============
 
-app.get('/api/admin/feedback', requireAdmin, (req, res) => {
+app.get('/api/admin/feedback', requireAuth, (req, res) => {
   const bizId = parseInt(req.query.business_id, 10);
-  if (!bizId || !Q.bizById.get(bizId)) return res.status(400).json({ error: 'valid business_id required' });
+  const biz = bizId && Q.bizById.get(bizId);
+  if (!biz) return res.status(400).json({ error: 'valid business_id required' });
+  if (!userOwnsBiz(req.user, biz)) return res.status(403).json({ error: 'Forbidden' });
   res.json(Q.feedbackByBiz.all(bizId));
 });
 
-app.post('/api/admin/feedback/:id/resolve', requireAdmin, writeLimiter, (req, res) => {
+app.post('/api/admin/feedback/:id/resolve', requireAuth, writeLimiter, (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const resolved = req.body.resolved ? 1 : 0;
-  Q.resolveFeedback.run(resolved, id);
+  const fb = db.prepare('SELECT business_id FROM feedback WHERE id = ?').get(id);
+  if (!fb) return res.status(404).json({ error: 'not found' });
+  if (!userOwnsBiz(req.user, Q.bizById.get(fb.business_id))) return res.status(403).json({ error: 'Forbidden' });
+  Q.resolveFeedback.run(req.body.resolved ? 1 : 0, id);
   res.json({ ok: true });
 });
 
 // ============ ADMIN: ANALYTICS ============
 
-app.get('/api/admin/analytics', requireAdmin, (req, res) => {
+app.get('/api/admin/analytics', requireAuth, (req, res) => {
   const bizId = parseInt(req.query.business_id, 10);
-  if (!bizId || !Q.bizById.get(bizId)) return res.status(400).json({ error: 'valid business_id required' });
+  const biz = bizId && Q.bizById.get(bizId);
+  if (!biz) return res.status(400).json({ error: 'valid business_id required' });
+  if (!userOwnsBiz(req.user, biz)) return res.status(403).json({ error: 'Forbidden' });
   const dist = db.prepare('SELECT stars, COUNT(*) n FROM rating_events WHERE business_id=? GROUP BY stars').all(bizId);
   const byRoute = db.prepare('SELECT routed_to, COUNT(*) n FROM rating_events WHERE business_id=? GROUP BY routed_to').all(bizId);
   const totalFeedback = db.prepare('SELECT COUNT(*) n FROM feedback WHERE business_id=?').get(bizId).n;

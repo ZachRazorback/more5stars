@@ -178,6 +178,13 @@
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(b => {
       biz = b;
+      if (b.locked) {
+        $('logo').textContent = '⏸';
+        $('title').textContent = b.name || 'Review page unavailable';
+        $('subtitle').textContent = 'This review page is currently unavailable. Please check back soon.';
+        $('step-stars').classList.remove('show');
+        return;
+      }
       $('title').textContent = b.name;
       if (b.logo_url) {
         const img = document.createElement('img');

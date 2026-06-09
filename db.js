@@ -70,6 +70,20 @@ CREATE TABLE IF NOT EXISTS admins (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Self-serve customer accounts. One account = one paying customer (Stripe-managed).
+-- Businesses with account_id = NULL are "house-owned" (managed by the super-admin,
+-- e.g. existing clients) and are always live.
+CREATE TABLE IF NOT EXISTS accounts (
+  id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+  email                  TEXT UNIQUE NOT NULL,
+  password_hash          TEXT,                       -- set during onboarding (Stage B)
+  stripe_customer_id     TEXT,
+  stripe_subscription_id TEXT,
+  subscription_status    TEXT NOT NULL DEFAULT 'trialing', -- trialing|active|past_due|canceled
+  trial_ends_at          TEXT,
+  created_at             TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_feedback_biz ON feedback(business_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_events_biz ON rating_events(business_id, created_at);
 `);
@@ -80,6 +94,11 @@ CREATE INDEX IF NOT EXISTS idx_events_biz ON rating_events(business_id, created_
   if (!cols.includes('logo_url')) {
     db.exec('ALTER TABLE businesses ADD COLUMN logo_url TEXT');
     console.log('Migration: added businesses.logo_url');
+  }
+  // Multi-account: link businesses to an owning account. NULL = house-owned (super-admin).
+  if (!cols.includes('account_id')) {
+    db.exec('ALTER TABLE businesses ADD COLUMN account_id INTEGER');
+    console.log('Migration: added businesses.account_id (existing businesses are house-owned)');
   }
 }
 
